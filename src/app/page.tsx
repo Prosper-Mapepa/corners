@@ -1,12 +1,10 @@
 "use client"
 
-import { Fragment } from "react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Input } from "@/components/ui/input"
-import { MapPin, Users, Utensils, Hotel, Music, Camera, Shield, Star, ArrowRight, Play, Download, Sparkles } from "lucide-react"
-import { AfricaIcon } from "@/components/AfricaIcon"
+import { Users, Utensils, Hotel, Music, Camera, Shield, Star, ArrowRight, Download } from "lucide-react"
 import Link from "next/link"
 import Image from "next/image"
 import Africa from "@/assets/africa.png"
@@ -20,10 +18,6 @@ import Drums from "@/assets/african-drums.png"
 import Mask from "@/assets/mask.png"
 import Globe from "@/assets/globe.png"
 import Woman from "@/assets/woman.png"
-import Happy from "@/assets/happy.png"
-import Shirt from "@/assets/shirt.png"
-import AfricanDrum from "@/assets/african-drum.png"
-import Djembe from "@/assets/djembe.png"
 
 
 export default function HomePage() {
@@ -188,7 +182,7 @@ export default function HomePage() {
                   <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-yellow-400 opacity-75"></span>
                   <span className="relative inline-flex rounded-full h-3 w-3 bg-yellow-500"></span>
                 </span>
-                🌍 Discover Africa's Hidden Gems
+                🌍 Discover Africa&rsquo;s Hidden Gems
               </span>
             </div> */}
 

@@ -52,7 +52,7 @@ export default function BusinessDashboard() {
         {/* Welcome Section */}
         <div className="mb-8">
           <h1 className="text-3xl font-bold text-gray-900 mb-2">Welcome back, Mama Africa Restaurant!</h1>
-          <p className="text-gray-600">Here's how your business is performing on Corners.</p>
+          <p className="text-gray-600">Here&rsquo;s how your business is performing on Corners.</p>
         </div>
 
         {/* Quick Stats */}
@@ -162,12 +162,12 @@ export default function BusinessDashboard() {
                   </div>
 
                   <div className="flex items-center justify-between p-4 border rounded-lg">
-                    <div className="flex items-center space-x-4">
+                      <div className="flex items-center space-x-4">
                       <div className="w-16 h-16 bg-blue-100 rounded-lg flex items-center justify-center">
                         <span className="text-2xl">☕</span>
                       </div>
                       <div>
-                        <h3 className="font-semibold">Mama's Coffee Corner</h3>
+                        <h3 className="font-semibold">Mama&rsquo;s Coffee Corner</h3>
                         <p className="text-sm text-gray-600">Lagos, Nigeria</p>
                         <div className="flex items-center mt-1">
                           <Star className="w-4 h-4 text-yellow-400 fill-current" />

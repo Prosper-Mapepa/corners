@@ -248,7 +248,7 @@ export default function SavedPage() {
 
                   {place.notes && (
                     <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 mb-4">
-                      <p className="text-sm text-amber-800 italic">"{place.notes}"</p>
+                      <p className="text-sm text-amber-800 italic">&ldquo;{place.notes}&rdquo;</p>
                     </div>
                   )}
 
