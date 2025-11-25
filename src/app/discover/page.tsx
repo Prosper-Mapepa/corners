@@ -286,7 +286,14 @@ export default function DiscoverPage() {
               <div className="grid md:grid-cols-3 gap-6">
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-2">Price Level</label>
-                  <Slider value={priceRange} onValueChange={setPriceRange} min={1} max={4} step={1} className="w-full" />
+                  <Slider
+                    value={priceRange}
+                    onValueChange={(value) => setPriceRange([value[0] ?? 1, value[1] ?? value[0] ?? 4])}
+                    min={1}
+                    max={4}
+                    step={1}
+                    className="w-full"
+                  />
                   <div className="flex justify-between text-sm text-gray-500 mt-1">
                     <span>{"$".repeat(priceRange[0]) || "$"}</span>
                     <span>{"$".repeat(priceRange[1]) || "$$$$"}</span>
