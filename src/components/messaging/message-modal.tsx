@@ -120,7 +120,6 @@ export function MessageModal({ placeId, placeName, recipientEmail, isOpen, onClo
         {
           placeId,
           recipientId: otherUserId,
-          recipientEmail: recipientEmail,
           content: newMessage.trim(),
         },
         { auth: token }
