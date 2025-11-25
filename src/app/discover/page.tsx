@@ -15,7 +15,7 @@ import {
   Share2,
   Clock,
   DollarSign,
-  Map,
+  Map as MapIcon,
   Grid,
   List,
   SlidersHorizontal,
@@ -375,7 +375,7 @@ export default function DiscoverPage() {
               <List className="w-4 h-4" />
             </Button>
             <Button variant="outline" size="sm">
-              <Map className="w-4 h-4 mr-2" />
+              <MapIcon className="w-4 h-4 mr-2" />
               Map View
             </Button>
           </div>
@@ -406,7 +406,7 @@ export default function DiscoverPage() {
           </div>
         ) : filteredPlaces.length === 0 ? (
           <div className="rounded-2xl border border-dashed border-orange-200 bg-white p-12 text-center">
-            <Map className="mx-auto mb-4 h-10 w-10 text-orange-400" />
+            <MapIcon className="mx-auto mb-4 h-10 w-10 text-orange-400" />
             <h3 className="text-xl font-semibold text-gray-900 mb-2">No places match your filters yet</h3>
             <p className="text-gray-600 mb-6">
               Try adjusting your filters or search terms to discover more experiences across the continent.
