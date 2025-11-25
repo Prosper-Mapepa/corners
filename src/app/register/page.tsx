@@ -1,17 +1,99 @@
 "use client"
 
-import { useState } from "react"
+import { useEffect, useState } from "react"
+import Link from "next/link"
+import { useRouter } from "next/navigation"
+import { MapPin, Mail, Phone, User, Lock, Globe, Loader2 } from "lucide-react"
+
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Checkbox } from "@/components/ui/checkbox"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { MapPin, Mail, Phone, User, Lock, Globe } from "lucide-react"
-import Link from "next/link"
+import { api } from "@/lib/api"
+import { useAuth } from "@/hooks/use-auth"
+
+type AuthResponse = {
+  accessToken: string
+  user: {
+    id: string
+    email: string
+    name: string
+    role: string
+  }
+}
 
 export default function RegisterPage() {
-  const [userType, setUserType] = useState("user")
+  const router = useRouter()
+  const { setAuth, token, user } = useAuth()
+  const [userType, setUserType] = useState<"user" | "business">("user")
+  const [firstName, setFirstName] = useState("")
+  const [lastName, setLastName] = useState("")
+  const [businessName, setBusinessName] = useState("")
+  const [email, setEmail] = useState("")
+  const [phone, setPhone] = useState("")
+  const [location, setLocation] = useState("")
+  const [password, setPassword] = useState("")
+  const [confirmPassword, setConfirmPassword] = useState("")
+  const [isSubmitting, setIsSubmitting] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const [acceptTerms, setAcceptTerms] = useState(false)
+  const [marketingOptIn, setMarketingOptIn] = useState(false)
+
+  useEffect(() => {
+    if (user && token) {
+      if (user.role === "business") {
+        router.replace("/business/dashboard")
+      } else if (user.role === "admin" || user.role === "super_admin") {
+        router.replace("/admin")
+      } else {
+        router.replace("/discover")
+      }
+    }
+  }, [router, token, user])
+
+  const displayName =
+    userType === "business"
+      ? businessName.trim() || `${firstName} ${lastName}`.trim()
+      : `${firstName} ${lastName}`.trim()
+
+  const handleSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault()
+    if (!acceptTerms) {
+      setError("Please accept the Terms of Service to continue.")
+      return
+    }
+    if (!displayName) {
+      setError(userType === "business" ? "Business name is required." : "First and last name are required.")
+      return
+    }
+    if (password !== confirmPassword) {
+      setError("Passwords do not match.")
+      return
+    }
+    setError(null)
+    setIsSubmitting(true)
+    try {
+      const payload = {
+        email,
+        password,
+        name: displayName,
+        role: userType === "business" ? "business" : "user",
+      }
+      const response = await api.post<AuthResponse>("/auth/register", payload)
+      setAuth(response.accessToken, response.user)
+      if (response.user.role === "business") {
+        router.push("/business/dashboard")
+      } else {
+        router.push("/discover")
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Unable to create your account right now.")
+    } finally {
+      setIsSubmitting(false)
+    }
+  }
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-orange-50 to-red-50 flex items-center justify-center p-4">
@@ -27,9 +109,9 @@ export default function RegisterPage() {
           <CardDescription>Create your account to start discovering amazing places across Africa</CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
-          {/* User Type Selection */}
           <div className="grid grid-cols-2 gap-4">
             <Button
+              type="button"
               variant={userType === "user" ? "default" : "outline"}
               onClick={() => setUserType("user")}
               className={userType === "user" ? "bg-gradient-to-r from-orange-500 to-red-500" : ""}
@@ -38,6 +120,7 @@ export default function RegisterPage() {
               Explorer
             </Button>
             <Button
+              type="button"
               variant={userType === "business" ? "default" : "outline"}
               onClick={() => setUserType("business")}
               className={userType === "business" ? "bg-gradient-to-r from-orange-500 to-red-500" : ""}
@@ -47,15 +130,27 @@ export default function RegisterPage() {
             </Button>
           </div>
 
-          <form className="space-y-4">
+          <form className="space-y-4" onSubmit={handleSubmit}>
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
                 <Label htmlFor="firstName">First Name</Label>
-                <Input id="firstName" placeholder="John" required />
+                <Input
+                  id="firstName"
+                  placeholder="John"
+                  required={userType === "user"}
+                  value={firstName}
+                  onChange={(event) => setFirstName(event.target.value)}
+                />
               </div>
               <div className="space-y-2">
                 <Label htmlFor="lastName">Last Name</Label>
-                <Input id="lastName" placeholder="Doe" required />
+                <Input
+                  id="lastName"
+                  placeholder="Doe"
+                  required={userType === "user"}
+                  value={lastName}
+                  onChange={(event) => setLastName(event.target.value)}
+                />
               </div>
             </div>
 
@@ -63,7 +158,15 @@ export default function RegisterPage() {
               <Label htmlFor="email">Email</Label>
               <div className="relative">
                 <Mail className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
-                <Input id="email" type="email" placeholder="john@example.com" className="pl-10" required />
+                <Input
+                  id="email"
+                  type="email"
+                  placeholder="john@example.com"
+                  className="pl-10"
+                  required
+                  value={email}
+                  onChange={(event) => setEmail(event.target.value)}
+                />
               </div>
             </div>
 
@@ -71,24 +174,31 @@ export default function RegisterPage() {
               <Label htmlFor="phone">Phone Number</Label>
               <div className="relative">
                 <Phone className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
-                <Input id="phone" type="tel" placeholder="+234 123 456 7890" className="pl-10" required />
+                <Input
+                  id="phone"
+                  type="tel"
+                  placeholder="+234 123 456 7890"
+                  className="pl-10"
+                  value={phone}
+                  onChange={(event) => setPhone(event.target.value)}
+                />
               </div>
             </div>
 
             <div className="space-y-2">
               <Label htmlFor="location">Location</Label>
-              <Select>
+              <Select value={location} onValueChange={setLocation}>
                 <SelectTrigger>
                   <SelectValue placeholder="Select your country" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="nigeria">Nigeria</SelectItem>
-                  <SelectItem value="south-africa">South Africa</SelectItem>
-                  <SelectItem value="kenya">Kenya</SelectItem>
-                  <SelectItem value="ghana">Ghana</SelectItem>
-                  <SelectItem value="egypt">Egypt</SelectItem>
-                  <SelectItem value="morocco">Morocco</SelectItem>
-                  <SelectItem value="other">Other</SelectItem>
+                  <SelectItem value="Nigeria">Nigeria</SelectItem>
+                  <SelectItem value="South Africa">South Africa</SelectItem>
+                  <SelectItem value="Kenya">Kenya</SelectItem>
+                  <SelectItem value="Ghana">Ghana</SelectItem>
+                  <SelectItem value="Egypt">Egypt</SelectItem>
+                  <SelectItem value="Morocco">Morocco</SelectItem>
+                  <SelectItem value="Other">Other</SelectItem>
                 </SelectContent>
               </Select>
             </div>
@@ -96,7 +206,13 @@ export default function RegisterPage() {
             {userType === "business" && (
               <div className="space-y-2">
                 <Label htmlFor="businessName">Business Name</Label>
-                <Input id="businessName" placeholder="Your Business Name" required />
+                <Input
+                  id="businessName"
+                  placeholder="Your Business Name"
+                  required
+                  value={businessName}
+                  onChange={(event) => setBusinessName(event.target.value)}
+                />
               </div>
             )}
 
@@ -110,6 +226,9 @@ export default function RegisterPage() {
                   placeholder="Create a strong password"
                   className="pl-10"
                   required
+                  value={password}
+                  onChange={(event) => setPassword(event.target.value)}
+                  minLength={6}
                 />
               </div>
             </div>
@@ -124,12 +243,15 @@ export default function RegisterPage() {
                   placeholder="Confirm your password"
                   className="pl-10"
                   required
+                  value={confirmPassword}
+                  onChange={(event) => setConfirmPassword(event.target.value)}
+                  minLength={6}
                 />
               </div>
             </div>
 
             <div className="flex items-center space-x-2">
-              <Checkbox id="terms" required />
+              <Checkbox id="terms" required checked={acceptTerms} onCheckedChange={(value) => setAcceptTerms(value === true)} />
               <Label htmlFor="terms" className="text-sm">
                 I agree to the{" "}
                 <Link href="/terms" className="text-orange-600 hover:underline">
@@ -143,17 +265,29 @@ export default function RegisterPage() {
             </div>
 
             <div className="flex items-center space-x-2">
-              <Checkbox id="marketing" />
+              <Checkbox id="marketing" checked={marketingOptIn} onCheckedChange={(value) => setMarketingOptIn(value === true)} />
               <Label htmlFor="marketing" className="text-sm">
                 Send me updates about new features and local recommendations
               </Label>
             </div>
 
+            {error && (
+              <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{error}</div>
+            )}
+
             <Button
               type="submit"
               className="w-full bg-gradient-to-r from-orange-500 to-red-500 hover:from-orange-600 hover:to-red-600"
+              disabled={isSubmitting}
             >
-              Create Account
+              {isSubmitting ? (
+                <span className="flex items-center justify-center gap-2">
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                  Creating your account...
+                </span>
+              ) : (
+                "Create Account"
+              )}
             </Button>
           </form>
 

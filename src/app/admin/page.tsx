@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react"
 import { useRouter } from "next/navigation"
+import Image from "next/image"
 
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -29,9 +30,20 @@ import {
   TrendingUp,
   Users,
   XCircle,
+  ThumbsUp,
 } from "lucide-react"
-
-const TOKEN_STORAGE_KEY = "corners.accessToken"
+import { useAuth } from "@/hooks/use-auth"
+import { LogoutButton } from "@/components/auth/logout-button"
+import { MetadataInputs, PlaceMetadata, emptyMetadataInputs, metadataFromInputs } from "@/lib/place-metadata"
+import {
+  TAG_OPTIONS,
+  AMENITY_OPTIONS,
+  HIGHLIGHT_OPTIONS,
+  DAYS_OF_WEEK,
+  TIME_OPTIONS,
+  PRICE_RANGE_OPTIONS,
+} from "@/lib/form-options"
+import { Checkbox } from "@/components/ui/checkbox"
 
 type PlaceStatus = "pending" | "approved" | "rejected"
 
@@ -70,6 +82,7 @@ type AdminPlace = {
   ownerEmail?: string | null
   submittedAt?: string
   createdAt?: string
+  metadata?: PlaceMetadata | null
 }
 
 type PlaceStats = {
@@ -98,7 +111,7 @@ type NewPlaceFormState = {
   rating: number
   reviews: number
   imageUrl: string
-  tags: string
+  tags: string[]
   distance: string
   ownerName: string
   ownerEmail: string
@@ -126,7 +139,7 @@ const statusBadgeStyles: Record<PlaceStatus, string> = {
 
 export default function AdminDashboard() {
   const router = useRouter()
-  const [token, setToken] = useState<string | null>(null)
+  const { token, user, loading, refreshProfile, logout } = useAuth()
   const [places, setPlaces] = useState<AdminPlace[]>([])
   const [stats, setStats] = useState<PlaceStats | null>(null)
   const [users, setUsers] = useState<ApiUser[]>([])
@@ -147,32 +160,52 @@ export default function AdminDashboard() {
     rating: 4.5,
     reviews: 0,
     imageUrl: "",
-    tags: "",
+    tags: [],
     distance: "",
     ownerName: "",
     ownerEmail: "",
   })
+  const [metadataInputs, setMetadataInputs] = useState<MetadataInputs>({ ...emptyMetadataInputs })
+  const [reviews, setReviews] = useState<any[]>([])
+  const [reviewStatusFilter, setReviewStatusFilter] = useState<"pending" | "approved" | "rejected" | "all">("all")
+  const [activeTab, setActiveTab] = useState("businesses")
+  const [showListingForm, setShowListingForm] = useState(false)
+
+  const [hasLoadedProfile, setHasLoadedProfile] = useState(false)
 
   useEffect(() => {
-    const storedToken = typeof window !== "undefined" ? localStorage.getItem(TOKEN_STORAGE_KEY) : null
-    if (!storedToken) {
+    if (loading) {
+      return
+    }
+    if (!token) {
       router.replace("/login")
       return
     }
-    setToken(storedToken)
-  }, [router])
+    if (!user && !hasLoadedProfile) {
+      refreshProfile().finally(() => setHasLoadedProfile(true))
+    }
+  }, [loading, token, user, router, refreshProfile, hasLoadedProfile])
+
+  useEffect(() => {
+    if (!loading && user && token) {
+      if (user.role !== "admin" && user.role !== "super_admin") {
+        router.replace("/discover")
+      }
+    }
+  }, [loading, router, token, user])
 
   const fetchAdminData = useCallback(async () => {
     if (!token) return
     try {
       setIsLoading(true)
       setError(null)
-      const [placesResponse, statsResponse, categoriesResponse, locationsResponse, usersResponse] = await Promise.all([
+      const [placesResponse, statsResponse, categoriesResponse, locationsResponse, usersResponse, reviewsResponse] = await Promise.all([
         api.get<AdminPlace[]>("/places", { auth: token }),
         api.get<PlaceStats>("/places/stats", { auth: token }),
         api.get<ApiCategory[]>("/categories"),
         api.get<ApiLocation[]>("/locations"),
         api.get<ApiUser[]>("/users", { auth: token }),
+        api.get<any[]>("/reviews", { auth: token }).catch(() => []),
       ])
       setPlaces(
         placesResponse.map((place) => ({
@@ -184,6 +217,7 @@ export default function AdminDashboard() {
       setCategories(categoriesResponse)
       setLocations(locationsResponse)
       setUsers(usersResponse)
+      setReviews(reviewsResponse || [])
     } catch (err) {
       const message = err instanceof Error ? err.message : "Unable to load admin data."
       setError(message)
@@ -205,10 +239,13 @@ export default function AdminDashboard() {
     [places],
   )
   const totalReviews = useMemo(
-    () => places.reduce((acc, place) => acc + (place.reviews ?? 0), 0),
+    () => reviews.filter((review) => review.status === "approved").length,
+    [reviews],
+  )
+  const pendingApprovals = useMemo(
+    () => places.filter((place) => place.status === "pending").length,
     [places],
   )
-  const pendingApprovals = stats?.pending ?? places.filter((place) => place.status === "pending").length
   const approvalRate = useMemo(() => {
     if (!stats || stats.totalPlaces === 0) {
       return 0
@@ -254,6 +291,27 @@ export default function AdminDashboard() {
     }
   }
 
+  const handleReviewStatusChange = async (reviewId: string, status: "approved" | "rejected") => {
+    if (!token) return
+    try {
+      setIsSubmitting(true)
+      await api.patch(`/reviews/${reviewId}`, { status }, { auth: token })
+      await fetchAdminData()
+      setSuccessMessage(`Review ${status === "approved" ? "approved" : "rejected"} successfully.`)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to update review status.")
+    } finally {
+      setIsSubmitting(false)
+    }
+  }
+
+  const filteredReviews = useMemo(() => {
+    return reviews.filter((review) => {
+      if (reviewStatusFilter === "all") return true
+      return review.status === reviewStatusFilter
+    })
+  }, [reviews, reviewStatusFilter])
+
   const handleCreatePlace = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault()
     if (!token) return
@@ -269,14 +327,12 @@ export default function AdminDashboard() {
         rating: newPlace.rating,
         reviews: newPlace.reviews,
         imageUrl: newPlace.imageUrl || undefined,
-        tags: newPlace.tags
-          .split(",")
-          .map((tag) => tag.trim())
-          .filter(Boolean),
+        tags: newPlace.tags,
         distance: newPlace.distance || undefined,
         ownerName: newPlace.ownerName || undefined,
         ownerEmail: newPlace.ownerEmail || undefined,
         status: "pending" as PlaceStatus,
+        metadata: metadataFromInputs(metadataInputs),
       }
       await api.post("/places", payload, { auth: token })
       setSuccessMessage("New listing submitted for review.")
@@ -289,11 +345,13 @@ export default function AdminDashboard() {
         rating: 4.5,
         reviews: 0,
         imageUrl: "",
-        tags: "",
+        tags: [],
         distance: "",
         ownerName: "",
         ownerEmail: "",
       })
+      setMetadataInputs({ ...emptyMetadataInputs })
+      setShowListingForm(false)
       await fetchAdminData()
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to create listing.")
@@ -327,29 +385,68 @@ export default function AdminDashboard() {
     </Badge>
   )
 
+  const userFirstName = user?.name?.split(' ')[0] ?? user?.email?.split('@')[0] ?? 'Admin'
+
   return (
     <div className="min-h-screen bg-gray-50">
-      <header className="border-b bg-white shadow-sm">
-        <div className="mx-auto flex h-16 max-w-7xl items-center justify-between px-4 sm:px-6 lg:px-8">
-          <div className="flex items-center space-x-2">
-            <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-gradient-to-r from-orange-500 to-red-500">
-              <Building2 className="h-5 w-5 text-white" />
+      <header className="bg-white shadow-sm border-b">
+        <div className="max-w-[1600px] mx-auto px-6 sm:px-8 lg:px-12">
+          <div className="flex justify-between items-center h-16">
+            <div className="flex items-center space-x-2">
+              <div className="w-8 h-8 bg-gradient-to-r from-orange-500 to-red-500 rounded-lg flex items-center justify-center">
+                <Building2 className="w-5 h-5 text-white" />
+              </div>
+              <span className="text-2xl font-bold text-gray-900">Corners</span>
+              <Badge variant="secondary">Admin</Badge>
             </div>
-            <span className="text-2xl font-bold text-gray-900">Corners Admin</span>
-          </div>
-          <div className="flex items-center space-x-4">
-            <Badge variant="secondary">
-              <Globe2 className="mr-1 h-3 w-3" />
-              Africa Network
-            </Badge>
-            <div className="flex h-8 w-8 items-center justify-center rounded-full bg-orange-500 text-sm font-semibold text-white">
-              A
+            <div className="flex items-center space-x-4">
+              <div className="flex items-center space-x-2">
+                <div className="w-8 h-8 bg-orange-500 rounded-full flex items-center justify-center text-white font-semibold">
+                  {userFirstName.charAt(0).toUpperCase()}
+                </div>
+                <LogoutButton variant="link" className="text-sm text-gray-600">
+                  Log out
+                </LogoutButton>
+              </div>
             </div>
           </div>
         </div>
       </header>
 
-      <main className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
+      <div className="max-w-[1600px] mx-auto px-6 sm:px-8 lg:px-12 py-8">
+        {/* Header Section */}
+        <div className="mb-6">
+          <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+            <div>
+              <h1 className="text-3xl font-bold text-gray-900 mb-1">
+                {user ? (
+                  <>
+                    Hello, <span className="text-orange-600">{userFirstName}!</span>
+                  </>
+                ) : (
+                  "Admin Dashboard"
+                )}
+              </h1>
+              <p className="text-sm text-gray-600">Manage platform content, users, and listings</p>
+            </div>
+            <Button
+              type="button"
+              className="bg-gradient-to-r from-orange-500 to-red-500 hover:from-orange-600 hover:to-red-600 shadow-md"
+              onClick={() => {
+                setActiveTab("businesses")
+                setShowListingForm(true)
+                setTimeout(() => {
+                  const formSection = document.getElementById("new-listing-form")
+                  formSection?.scrollIntoView({ behavior: "smooth", block: "start" })
+                }, 100)
+              }}
+            >
+              <Plus className="w-4 h-4 mr-2" />
+              Add New Listing
+            </Button>
+          </div>
+        </div>
+
         {(error || successMessage) && (
           <div
             className={`mb-6 rounded-xl border px-4 py-3 text-sm ${
@@ -360,126 +457,157 @@ export default function AdminDashboard() {
           </div>
         )}
 
-        <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-4">
-          <Card>
+        {/* Key Performance Indicators */}
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
+          <Card className="border border-blue-100 shadow-sm hover:shadow-md transition-shadow bg-gradient-to-br from-blue-50/50 to-white">
             <CardContent className="p-6">
               <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-sm font-medium text-gray-600">Total Users</p>
-                  <p className="text-2xl font-bold text-gray-900">{totalUsers}</p>
-                  <p className="text-xs text-gray-500">Including explorers, businesses & admins</p>
+                <div className="flex-1">
+                  <p className="text-xs font-medium text-gray-600 uppercase tracking-wide mb-2">Total Users</p>
+                  <p className="text-3xl font-bold text-gray-900 mb-2">{totalUsers}</p>
+                  <p className="text-sm text-gray-600">Including explorers, businesses & admins</p>
                 </div>
-                <div className="flex h-12 w-12 items-center justify-center rounded-lg bg-blue-100">
-                  <Users className="h-6 w-6 text-blue-600" />
+                <div className="w-12 h-12 bg-blue-100 rounded-lg flex items-center justify-center">
+                  <Users className="w-6 h-6 text-blue-600" />
                 </div>
               </div>
             </CardContent>
           </Card>
-          <Card>
+          <Card className="border border-green-100 shadow-sm hover:shadow-md transition-shadow bg-gradient-to-br from-green-50/50 to-white">
             <CardContent className="p-6">
               <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-sm font-medium text-gray-600">Active Businesses</p>
-                  <p className="text-2xl font-bold text-gray-900">{approvedBusinesses}</p>
-                  <p className="text-xs text-green-600">Approved and visible on Discover</p>
+                <div className="flex-1">
+                  <p className="text-xs font-medium text-gray-600 uppercase tracking-wide mb-2">Active Businesses</p>
+                  <p className="text-3xl font-bold text-gray-900 mb-2">{approvedBusinesses}</p>
+                  <p className="text-sm text-gray-600">
+                    <span className="font-medium text-green-600">Approved</span> and visible on Discover
+                  </p>
                 </div>
-                <div className="flex h-12 w-12 items-center justify-center rounded-lg bg-green-100">
-                  <Building2 className="h-6 w-6 text-green-600" />
+                <div className="w-12 h-12 bg-green-100 rounded-lg flex items-center justify-center">
+                  <Building2 className="w-6 h-6 text-green-600" />
                 </div>
               </div>
             </CardContent>
           </Card>
-          <Card>
+          <Card className="border border-amber-100 shadow-sm hover:shadow-md transition-shadow bg-gradient-to-br from-amber-50/50 to-white">
             <CardContent className="p-6">
               <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-sm font-medium text-gray-600">Total Reviews</p>
-                  <p className="text-2xl font-bold text-gray-900">{totalReviews}</p>
-                  <p className="text-xs text-gray-500">From all approved listings</p>
+                <div className="flex-1">
+                  <p className="text-xs font-medium text-gray-600 uppercase tracking-wide mb-2">Total Reviews</p>
+                  <p className="text-3xl font-bold text-gray-900 mb-2">{totalReviews}</p>
+                  <p className="text-sm text-gray-600">From all approved listings</p>
                 </div>
-                <div className="flex h-12 w-12 items-center justify-center rounded-lg bg-yellow-100">
-                  <Star className="h-6 w-6 text-yellow-600" />
+                <div className="w-12 h-12 bg-amber-100 rounded-lg flex items-center justify-center">
+                  <Star className="w-6 h-6 text-amber-600" />
                 </div>
               </div>
             </CardContent>
           </Card>
-          <Card>
+          <Card className="border border-orange-100 shadow-sm hover:shadow-md transition-shadow bg-gradient-to-br from-orange-50/50 to-white">
             <CardContent className="p-6">
               <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-sm font-medium text-gray-600">Pending Approvals</p>
-                  <p className="text-2xl font-bold text-gray-900">{pendingApprovals}</p>
-                  <p className="text-xs text-orange-600">Listings awaiting review</p>
+                <div className="flex-1">
+                  <p className="text-xs font-medium text-gray-600 uppercase tracking-wide mb-2">Pending Approvals</p>
+                  <p className="text-3xl font-bold text-gray-900 mb-2">{pendingApprovals}</p>
+                  <p className="text-sm text-gray-600">
+                    <span className="font-medium text-orange-600">Listings</span> awaiting review
+                  </p>
                 </div>
-                <div className="flex h-12 w-12 items-center justify-center rounded-lg bg-orange-100">
-                  <AlertTriangle className="h-6 w-6 text-orange-600" />
+                <div className="w-12 h-12 bg-orange-100 rounded-lg flex items-center justify-center">
+                  <AlertTriangle className="w-6 h-6 text-orange-600" />
                 </div>
               </div>
             </CardContent>
           </Card>
         </div>
 
-        <Tabs defaultValue="businesses" className="mt-10 space-y-6">
-          <TabsList className="grid w-full grid-cols-4">
-            <TabsTrigger value="businesses">Business Listings</TabsTrigger>
-            <TabsTrigger value="users">User Management</TabsTrigger>
-            <TabsTrigger value="reviews">Content Moderation</TabsTrigger>
-            <TabsTrigger value="analytics">Analytics</TabsTrigger>
-          </TabsList>
+        <Card className="border-0 shadow-xl overflow-hidden p-0 bg-white">
+          <Tabs value={activeTab} onValueChange={(value) => { setActiveTab(value); if (value !== "businesses") setShowListingForm(false) }} className="w-full">
+            <CardHeader className="bg-gray-50 border-b border-gray-200 m-0 px-6 py-4">
+              <TabsList className="inline-flex h-11 items-center justify-start rounded-lg bg-white p-1 w-full border border-gray-200">
+                <TabsTrigger 
+                  value="businesses" 
+                  className="inline-flex items-center justify-center whitespace-nowrap rounded-lg px-6 py-2.5 text-sm font-semibold ring-offset-background transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 data-[state=active]:bg-gradient-to-r data-[state=active]:from-orange-500 data-[state=active]:to-red-500 data-[state=active]:text-white data-[state=active]:shadow-md data-[state=active]:border data-[state=active]:border-orange-200/50 data-[state=inactive]:text-gray-600 data-[state=inactive]:hover:text-gray-900"
+                >
+                  <Building2 className="w-5 h-5 mr-2.5" />
+                  Business Listings
+                </TabsTrigger>
+                <TabsTrigger 
+                  value="users" 
+                  className="inline-flex items-center justify-center whitespace-nowrap rounded-lg px-6 py-2.5 text-sm font-semibold ring-offset-background transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 data-[state=active]:bg-gradient-to-r data-[state=active]:from-orange-500 data-[state=active]:to-red-500 data-[state=active]:text-white data-[state=active]:shadow-md data-[state=active]:border data-[state=active]:border-orange-200/50 data-[state=inactive]:text-gray-600 data-[state=inactive]:hover:text-gray-900"
+                >
+                  <Users className="w-5 h-5 mr-2.5" />
+                  User Management
+                </TabsTrigger>
+                <TabsTrigger 
+                  value="reviews" 
+                  className="inline-flex items-center justify-center whitespace-nowrap rounded-lg px-6 py-2.5 text-sm font-semibold ring-offset-background transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 data-[state=active]:bg-gradient-to-r data-[state=active]:from-orange-500 data-[state=active]:to-red-500 data-[state=active]:text-white data-[state=active]:shadow-md data-[state=active]:border data-[state=active]:border-orange-200/50 data-[state=inactive]:text-gray-600 data-[state=inactive]:hover:text-gray-900"
+                >
+                  <Star className="w-5 h-5 mr-2.5" />
+                  Content Moderation
+                </TabsTrigger>
+                <TabsTrigger 
+                  value="analytics" 
+                  className="inline-flex items-center justify-center whitespace-nowrap rounded-lg px-6 py-2.5 text-sm font-semibold ring-offset-background transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 data-[state=active]:bg-gradient-to-r data-[state=active]:from-orange-500 data-[state=active]:to-red-500 data-[state=active]:text-white data-[state=active]:shadow-md data-[state=active]:border data-[state=active]:border-orange-200/50 data-[state=inactive]:text-gray-600 data-[state=inactive]:hover:text-gray-900"
+                >
+                  <TrendingUp className="w-5 h-5 mr-2.5" />
+                  Analytics
+                </TabsTrigger>
+              </TabsList>
+            </CardHeader>
 
-          <TabsContent value="businesses" className="space-y-6">
-            <Card>
-              <CardHeader>
-                <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+            <TabsContent value="businesses" className="m-0">
+              <CardContent className="p-6">
+                <div className="space-y-6">
                   <div>
-                    <CardTitle>Business Listings</CardTitle>
-                    <CardDescription>Review, approve and manage all submitted experiences.</CardDescription>
-                  </div>
-                  <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
-                    <div className="relative">
-                      <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
-                      <Input
-                        value={businessSearch}
-                        onChange={(event) => setBusinessSearch(event.target.value)}
-                        placeholder="Search businesses..."
-                        className="pl-9 sm:w-64"
-                      />
+                    <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between mb-4">
+                      <div>
+                        <h2 className="text-xl font-bold text-gray-900">Business Listings</h2>
+                        <p className="text-sm text-gray-600 mt-1">Review, approve and manage all submitted experiences.</p>
+                      </div>
+                      <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+                        <div className="relative">
+                          <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
+                          <Input
+                            value={businessSearch}
+                            onChange={(event) => setBusinessSearch(event.target.value)}
+                            placeholder="Search businesses..."
+                            className="pl-9 sm:w-64"
+                          />
+                        </div>
+                        <Select value={statusFilter} onValueChange={(value) => setStatusFilter(value as PlaceStatus | "all")}>
+                          <SelectTrigger className="sm:w-48">
+                            <SelectValue placeholder="Filter status" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="all">
+                              <div className="flex items-center">
+                                <Filter className="mr-2 h-4 w-4" />
+                                All statuses
+                              </div>
+                            </SelectItem>
+                            <SelectItem value="pending">
+                              <div className="flex items-center">
+                                <AlertTriangle className="mr-2 h-4 w-4" />
+                                Pending
+                              </div>
+                            </SelectItem>
+                            <SelectItem value="approved">
+                              <div className="flex items-center">
+                                <CheckCircle className="mr-2 h-4 w-4" />
+                                Approved
+                              </div>
+                            </SelectItem>
+                            <SelectItem value="rejected">
+                              <div className="flex items-center">
+                                <XCircle className="mr-2 h-4 w-4" />
+                                Rejected
+                              </div>
+                            </SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
                     </div>
-                    <Select value={statusFilter} onValueChange={(value) => setStatusFilter(value as PlaceStatus | "all")}>
-                      <SelectTrigger className="sm:w-48">
-                        <SelectValue placeholder="Filter status" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="all">
-                          <div className="flex items-center">
-                            <Filter className="mr-2 h-4 w-4" />
-                            All statuses
-                          </div>
-                        </SelectItem>
-                        <SelectItem value="pending">
-                          <div className="flex items-center">
-                            <AlertTriangle className="mr-2 h-4 w-4" />
-                            Pending
-                          </div>
-                        </SelectItem>
-                        <SelectItem value="approved">
-                          <div className="flex items-center">
-                            <CheckCircle className="mr-2 h-4 w-4" />
-                            Approved
-                          </div>
-                        </SelectItem>
-                        <SelectItem value="rejected">
-                          <div className="flex items-center">
-                            <XCircle className="mr-2 h-4 w-4" />
-                            Rejected
-                          </div>
-                        </SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-                </div>
-              </CardHeader>
-              <CardContent>
                 {isLoading ? (
                   <div className="space-y-4">
                     {Array.from({ length: 4 }).map((_, index) => (
@@ -588,19 +716,19 @@ export default function AdminDashboard() {
                       </div>
                     ))}
                   </div>
-                )}
-              </CardContent>
-            </Card>
+                  )}
+                </div>
 
-            <Card>
-              <CardHeader>
-                <CardTitle>Submit New Listing</CardTitle>
-                <CardDescription>Create a new experience on behalf of a partner business.</CardDescription>
-              </CardHeader>
-              <CardContent>
+                {(activeTab === "businesses" && showListingForm) && (
+                <Card id="new-listing-form" className="border-0 shadow-lg overflow-hidden p-0 mt-6">
+                  <CardHeader className="bg-gradient-to-r from-orange-50 to-red-50 border-b m-0 px-6 py-4">
+                    <CardTitle className="text-2xl font-bold text-gray-900">Submit a New Listing</CardTitle>
+                    <CardDescription className="text-base mt-1">Create a new experience on behalf of a partner business.</CardDescription>
+                  </CardHeader>
+                  <CardContent className="p-6">
                 <form className="grid gap-4 md:grid-cols-2" onSubmit={handleCreatePlace}>
                   <div className="md:col-span-2 space-y-2">
-                    <label className="text-sm font-medium text-gray-700">Name</label>
+                    <label className="text-sm font-medium text-gray-700">Experience Name</label>
                     <Input
                       required
                       value={newPlace.name}
@@ -612,10 +740,10 @@ export default function AdminDashboard() {
                     <label className="text-sm font-medium text-gray-700">Description</label>
                     <Textarea
                       required
+                      rows={4}
                       value={newPlace.description}
                       onChange={(event) => setNewPlace((prev) => ({ ...prev, description: event.target.value }))}
-                      placeholder="Describe the experience"
-                      rows={4}
+                      placeholder="Describe what makes this place special"
                     />
                   </div>
                   <div className="space-y-2">
@@ -623,6 +751,7 @@ export default function AdminDashboard() {
                     <Select
                       value={newPlace.categoryId}
                       onValueChange={(value) => setNewPlace((prev) => ({ ...prev, categoryId: value }))}
+                      required
                     >
                       <SelectTrigger>
                         <SelectValue placeholder="Select category" />
@@ -641,6 +770,7 @@ export default function AdminDashboard() {
                     <Select
                       value={newPlace.locationId}
                       onValueChange={(value) => setNewPlace((prev) => ({ ...prev, locationId: value }))}
+                      required
                     >
                       <SelectTrigger>
                         <SelectValue placeholder="Select location" />
@@ -655,19 +785,20 @@ export default function AdminDashboard() {
                     </Select>
                   </div>
                   <div className="space-y-2">
-                    <label className="text-sm font-medium text-gray-700">Price Level</label>
+                    <label className="text-sm font-medium text-gray-700">Price Range</label>
                     <Select
                       value={newPlace.priceLevel}
                       onValueChange={(value) => setNewPlace((prev) => ({ ...prev, priceLevel: value }))}
                     >
                       <SelectTrigger>
-                        <SelectValue placeholder="Price level" />
+                        <SelectValue placeholder="Select price range" />
                       </SelectTrigger>
                       <SelectContent>
-                        <SelectItem value="$">$ Budget</SelectItem>
-                        <SelectItem value="$$">$$ Moderate</SelectItem>
-                        <SelectItem value="$$$">$$$ Premium</SelectItem>
-                        <SelectItem value="$$$$">$$$$ Luxury</SelectItem>
+                        {PRICE_RANGE_OPTIONS.map((option) => (
+                          <SelectItem key={option.value} value={option.value}>
+                            {option.label}
+                          </SelectItem>
+                        ))}
                       </SelectContent>
                     </Select>
                   </div>
@@ -713,18 +844,47 @@ export default function AdminDashboard() {
                   </div>
                   <div className="md:col-span-2 space-y-2">
                     <label className="text-sm font-medium text-gray-700">Tags</label>
-                    <Input
-                      value={newPlace.tags}
-                      onChange={(event) => setNewPlace((prev) => ({ ...prev, tags: event.target.value }))}
-                      placeholder="Comma-separated tags (e.g. Luxury, Family-friendly)"
-                    />
+                    <div className="border rounded-lg p-3 max-h-48 overflow-y-auto">
+                      <div className="grid grid-cols-2 md:grid-cols-3 gap-2">
+                        {TAG_OPTIONS.map((tag) => (
+                          <div key={tag} className="flex items-center space-x-2">
+                            <Checkbox
+                              id={`tag-${tag}`}
+                              checked={newPlace.tags.includes(tag)}
+                              onCheckedChange={(checked) => {
+                                if (checked) {
+                                  setNewPlace((prev) => ({ ...prev, tags: [...prev.tags, tag] }))
+                                } else {
+                                  setNewPlace((prev) => ({ ...prev, tags: prev.tags.filter((t) => t !== tag) }))
+                                }
+                              }}
+                            />
+                            <label
+                              htmlFor={`tag-${tag}`}
+                              className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70 cursor-pointer"
+                            >
+                              {tag}
+                            </label>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                    {newPlace.tags.length > 0 && (
+                      <div className="flex flex-wrap gap-2 mt-2">
+                        {newPlace.tags.map((tag) => (
+                          <Badge key={tag} variant="secondary" className="text-xs">
+                            {tag}
+                          </Badge>
+                        ))}
+                      </div>
+                    )}
                   </div>
-                  <div className="space-y-2">
-                    <label className="text-sm font-medium text-gray-700">Owner Name</label>
+                  <div className="md:col-span-2 space-y-2">
+                    <label className="text-sm font-medium text-gray-700">Owner / Manager Name</label>
                     <Input
                       value={newPlace.ownerName}
                       onChange={(event) => setNewPlace((prev) => ({ ...prev, ownerName: event.target.value }))}
-                      placeholder="Business contact name"
+                      placeholder="Who should we contact?"
                     />
                   </div>
                   <div className="space-y-2">
@@ -736,33 +896,316 @@ export default function AdminDashboard() {
                       placeholder="contact@example.com"
                     />
                   </div>
-                  <div className="md:col-span-2 flex justify-end">
+                  <div className="md:col-span-2 space-y-4 border-t pt-4">
+                    <h4 className="text-sm font-semibold text-gray-900">Contact Information</h4>
+                    <div className="grid gap-4 md:grid-cols-3">
+                      <div className="space-y-2">
+                        <label className="text-sm text-gray-700">Phone number</label>
+                        <Input
+                          value={metadataInputs.contactPhone}
+                          onChange={(event) =>
+                            setMetadataInputs((prev) => ({ ...prev, contactPhone: event.target.value }))
+                          }
+                          placeholder="+234 123 456 7890"
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <label className="text-sm text-gray-700">Website</label>
+                        <Input
+                          value={metadataInputs.contactWebsite}
+                          onChange={(event) =>
+                            setMetadataInputs((prev) => ({ ...prev, contactWebsite: event.target.value }))
+                          }
+                          placeholder="https://example.com"
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <label className="text-sm text-gray-700">Address</label>
+                        <Input
+                          value={metadataInputs.contactAddress}
+                          onChange={(event) =>
+                            setMetadataInputs((prev) => ({ ...prev, contactAddress: event.target.value }))
+                          }
+                          placeholder="123 Main Street"
+                        />
+                      </div>
+                    </div>
+                  </div>
+                  <div className="md:col-span-2 space-y-2">
+                    <label className="text-sm font-medium text-gray-700">
+                      Gallery image URLs <span className="text-xs text-gray-500">(one per line)</span>
+                    </label>
+                    <Textarea
+                      value={metadataInputs.gallery}
+                      onChange={(event) => setMetadataInputs((prev) => ({ ...prev, gallery: event.target.value }))}
+                      rows={3}
+                      placeholder="https://example.com/photo.jpg"
+                    />
+                  </div>
+                  <div className="md:col-span-2 space-y-2">
+                    <label className="text-sm font-medium text-gray-700">Amenities</label>
+                    <div className="border rounded-lg p-3 max-h-48 overflow-y-auto">
+                      <div className="grid grid-cols-2 md:grid-cols-3 gap-2">
+                        {AMENITY_OPTIONS.map((amenity) => (
+                          <div key={amenity} className="flex items-center space-x-2">
+                            <Checkbox
+                              id={`amenity-${amenity}`}
+                              checked={metadataInputs.amenities.includes(amenity)}
+                              onCheckedChange={(checked) => {
+                                if (checked) {
+                                  setMetadataInputs((prev) => ({ ...prev, amenities: [...prev.amenities, amenity] }))
+                                } else {
+                                  setMetadataInputs((prev) => ({
+                                    ...prev,
+                                    amenities: prev.amenities.filter((a) => a !== amenity),
+                                  }))
+                                }
+                              }}
+                            />
+                            <label
+                              htmlFor={`amenity-${amenity}`}
+                              className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70 cursor-pointer"
+                            >
+                              {amenity}
+                            </label>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                    {metadataInputs.amenities.length > 0 && (
+                      <div className="flex flex-wrap gap-2 mt-2">
+                        {metadataInputs.amenities.map((amenity) => (
+                          <Badge key={amenity} variant="secondary" className="text-xs">
+                            {amenity}
+                          </Badge>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="md:col-span-2 space-y-2">
+                    <label className="text-sm font-medium text-gray-700">Highlights</label>
+                    <div className="border rounded-lg p-3 max-h-48 overflow-y-auto">
+                      <div className="grid grid-cols-2 md:grid-cols-3 gap-2">
+                        {HIGHLIGHT_OPTIONS.map((highlight) => (
+                          <div key={highlight} className="flex items-center space-x-2">
+                            <Checkbox
+                              id={`highlight-${highlight}`}
+                              checked={metadataInputs.highlights.includes(highlight)}
+                              onCheckedChange={(checked) => {
+                                if (checked) {
+                                  setMetadataInputs((prev) => ({
+                                    ...prev,
+                                    highlights: [...prev.highlights, highlight],
+                                  }))
+                                } else {
+                                  setMetadataInputs((prev) => ({
+                                    ...prev,
+                                    highlights: prev.highlights.filter((h) => h !== highlight),
+                                  }))
+                                }
+                              }}
+                            />
+                            <label
+                              htmlFor={`highlight-${highlight}`}
+                              className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70 cursor-pointer"
+                            >
+                              {highlight}
+                            </label>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                    {metadataInputs.highlights.length > 0 && (
+                      <div className="flex flex-wrap gap-2 mt-2">
+                        {metadataInputs.highlights.map((highlight) => (
+                          <Badge key={highlight} variant="secondary" className="text-xs">
+                            {highlight}
+                          </Badge>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="md:col-span-2 space-y-2">
+                    <label className="text-sm font-medium text-gray-700">Opening Hours</label>
+                    <div className="space-y-3 border rounded-lg p-4">
+                      {DAYS_OF_WEEK.map((day) => {
+                        const dayLower = day.toLowerCase()
+                        const currentHours = metadataInputs.hours[dayLower] || { day: dayLower, openTime: "", closeTime: "" }
+                        return (
+                          <div key={day} className="flex items-center gap-3">
+                            <div className="w-24 text-sm font-medium text-gray-700">{day}</div>
+                            <Select
+                              value={currentHours.openTime || "closed"}
+                              onValueChange={(value) => {
+                                setMetadataInputs((prev) => ({
+                                  ...prev,
+                                  hours: {
+                                    ...prev.hours,
+                                    [dayLower]: { ...currentHours, openTime: value === "closed" ? "" : value },
+                                  },
+                                }))
+                              }}
+                            >
+                              <SelectTrigger className="w-32">
+                                <SelectValue placeholder="Open" />
+                              </SelectTrigger>
+                              <SelectContent>
+                                <SelectItem value="closed">Closed</SelectItem>
+                                {TIME_OPTIONS.map((time) => (
+                                  <SelectItem key={time} value={time}>
+                                    {time}
+                                  </SelectItem>
+                                ))}
+                              </SelectContent>
+                            </Select>
+                            <span className="text-sm text-gray-500">to</span>
+                            <Select
+                              value={currentHours.closeTime || "closed"}
+                              onValueChange={(value) => {
+                                setMetadataInputs((prev) => ({
+                                  ...prev,
+                                  hours: {
+                                    ...prev.hours,
+                                    [dayLower]: { ...currentHours, closeTime: value === "closed" ? "" : value },
+                                  },
+                                }))
+                              }}
+                            >
+                              <SelectTrigger className="w-32">
+                                <SelectValue placeholder="Close" />
+                              </SelectTrigger>
+                              <SelectContent>
+                                <SelectItem value="closed">Closed</SelectItem>
+                                {TIME_OPTIONS.map((time) => (
+                                  <SelectItem key={time} value={time}>
+                                    {time}
+                                  </SelectItem>
+                                ))}
+                              </SelectContent>
+                            </Select>
+                          </div>
+                        )
+                      })}
+                    </div>
+                  </div>
+
+                  <div className="md:col-span-2 space-y-2">
+                    <label className="text-sm font-medium text-gray-700">Menu Items</label>
+                    <div className="space-y-3">
+                      {metadataInputs.menu.map((item, index) => (
+                        <div key={index} className="border rounded-lg p-4 space-y-3">
+                          <div className="grid gap-3 md:grid-cols-2">
+                            <div className="space-y-2">
+                              <label className="text-xs text-gray-600">Item Name</label>
+                              <Input
+                                value={item.name}
+                                onChange={(e) => {
+                                  const newMenu = [...metadataInputs.menu]
+                                  newMenu[index] = { ...item, name: e.target.value }
+                                  setMetadataInputs((prev) => ({ ...prev, menu: newMenu }))
+                                }}
+                                placeholder="e.g. Jollof Rice"
+                              />
+                            </div>
+                            <div className="space-y-2">
+                              <label className="text-xs text-gray-600">Price</label>
+                              <Input
+                                value={item.price}
+                                onChange={(e) => {
+                                  const newMenu = [...metadataInputs.menu]
+                                  newMenu[index] = { ...item, price: e.target.value }
+                                  setMetadataInputs((prev) => ({ ...prev, menu: newMenu }))
+                                }}
+                                placeholder="e.g. ₦2,500"
+                              />
+                            </div>
+                          </div>
+                          <div className="space-y-2">
+                            <label className="text-xs text-gray-600">Description</label>
+                            <Input
+                              value={item.description}
+                              onChange={(e) => {
+                                const newMenu = [...metadataInputs.menu]
+                                newMenu[index] = { ...item, description: e.target.value }
+                                setMetadataInputs((prev) => ({ ...prev, menu: newMenu }))
+                              }}
+                              placeholder="e.g. Traditional Nigerian rice dish"
+                            />
+                          </div>
+                          <div className="space-y-2">
+                            <label className="text-xs text-gray-600">Image URL (optional)</label>
+                            <Input
+                              value={item.imageUrl}
+                              onChange={(e) => {
+                                const newMenu = [...metadataInputs.menu]
+                                newMenu[index] = { ...item, imageUrl: e.target.value }
+                                setMetadataInputs((prev) => ({ ...prev, menu: newMenu }))
+                              }}
+                              placeholder="https://example.com/image.jpg"
+                            />
+                          </div>
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="sm"
+                            className="text-red-600 hover:text-red-700"
+                            onClick={() => {
+                              setMetadataInputs((prev) => ({
+                                ...prev,
+                                menu: prev.menu.filter((_, i) => i !== index),
+                              }))
+                            }}
+                          >
+                            <Trash2 className="w-4 h-4 mr-1" />
+                            Remove
+                          </Button>
+                        </div>
+                      ))}
+                      <Button
+                        type="button"
+                        variant="outline"
+                        onClick={() => {
+                          setMetadataInputs((prev) => ({
+                            ...prev,
+                            menu: [...prev.menu, { name: "", price: "", description: "", imageUrl: "" }],
+                          }))
+                        }}
+                      >
+                        <Plus className="w-4 h-4 mr-2" />
+                        Add Menu Item
+                      </Button>
+                    </div>
+                  </div>
+                  <div className="md:col-span-2 flex flex-wrap items-center justify-end gap-3">
                     <Button type="submit" disabled={isSubmitting || !token}>
                       {isSubmitting ? (
                         <span className="flex items-center gap-2">
                           <Loader2 className="h-4 w-4 animate-spin" />
-                          Saving...
+                          Submitting...
                         </span>
                       ) : (
                         <span className="flex items-center gap-2">
                           <Plus className="h-4 w-4" />
-                          Submit Listing
+                          Submit for Review
                         </span>
                       )}
                     </Button>
                   </div>
                 </form>
+                  </CardContent>
+                </Card>
+                )}
+              </div>
               </CardContent>
-            </Card>
-          </TabsContent>
+            </TabsContent>
 
-          <TabsContent value="users">
-            <Card>
-              <CardHeader>
-                <CardTitle>User Management</CardTitle>
-                <CardDescription>Overview of platform accounts and their roles.</CardDescription>
-              </CardHeader>
-              <CardContent>
+            <TabsContent value="users" className="m-0">
+              <CardContent className="p-6">
+                <div>
+                  <h2 className="text-xl font-bold text-gray-900 mb-2">User Management</h2>
+                  <p className="text-sm text-gray-600 mb-4">Overview of platform accounts and their roles.</p>
                 {isLoading ? (
                   <div className="space-y-3">
                     {Array.from({ length: 4 }).map((_, index) => (
@@ -790,30 +1233,166 @@ export default function AdminDashboard() {
                     ))}
                   </div>
                 )}
+                </div>
               </CardContent>
-            </Card>
-          </TabsContent>
+            </TabsContent>
 
-          <TabsContent value="reviews">
-            <Card>
-              <CardHeader>
-                <CardTitle>Content Moderation</CardTitle>
-                <CardDescription>Upcoming workflows for moderating user submissions.</CardDescription>
-              </CardHeader>
-              <CardContent className="py-12 text-center text-gray-500">
-                <Star className="mx-auto mb-4 h-12 w-12 text-gray-300" />
-                Review moderation, flagging and automation tools will surface here soon.
+            <TabsContent value="reviews" className="m-0">
+              <CardContent className="p-6">
+                <div>
+                  <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between mb-4">
+                    <div>
+                      <h2 className="text-xl font-bold text-gray-900">Review Moderation</h2>
+                      <p className="text-sm text-gray-600 mt-1">Approve or reject customer reviews before they appear publicly.</p>
+                    </div>
+                    <Select value={reviewStatusFilter} onValueChange={(value) => setReviewStatusFilter(value as any)}>
+                      <SelectTrigger className="sm:w-48">
+                        <SelectValue placeholder="Filter status" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="all">All Reviews</SelectItem>
+                        <SelectItem value="pending">Pending</SelectItem>
+                        <SelectItem value="approved">Approved</SelectItem>
+                        <SelectItem value="rejected">Rejected</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                {isLoading ? (
+                  <div className="space-y-4">
+                    {Array.from({ length: 3 }).map((_, index) => (
+                      <div key={index} className="h-32 animate-pulse rounded-xl border bg-white" />
+                    ))}
+                  </div>
+                ) : filteredReviews.length === 0 ? (
+                  <div className="rounded-xl border border-dashed border-orange-200 bg-orange-50 px-6 py-10 text-center text-orange-700">
+                    No reviews found for the selected filter.
+                  </div>
+                ) : (
+                  <div className="space-y-4">
+                    {filteredReviews.map((review) => (
+                      <div
+                        key={review.id}
+                        className="flex flex-col gap-4 rounded-xl border p-4 shadow-sm md:flex-row md:items-start"
+                      >
+                        <div className="flex-1 space-y-3">
+                          <div className="flex items-start justify-between">
+                            <div>
+                              <div className="flex items-center gap-2">
+                                <h4 className="font-semibold text-gray-900">{review.user?.name || "Anonymous"}</h4>
+                                <Badge
+                                  variant={
+                                    review.status === "approved"
+                                      ? "default"
+                                      : review.status === "rejected"
+                                      ? "destructive"
+                                      : "secondary"
+                                  }
+                                >
+                                  {review.status}
+                                </Badge>
+                              </div>
+                              <p className="text-sm text-gray-500">{review.user?.email || ""}</p>
+                              <p className="text-xs text-gray-400">
+                                {review.place?.name || "Unknown Place"} • {new Date(review.createdAt).toLocaleDateString()}
+                              </p>
+                            </div>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            {[1, 2, 3, 4, 5].map((star) => (
+                              <Star
+                                key={star}
+                                className={`h-4 w-4 ${
+                                  star <= review.rating ? "text-yellow-400 fill-current" : "text-gray-300"
+                                }`}
+                              />
+                            ))}
+                            <span className="text-sm text-gray-600">({review.rating}/5)</span>
+                          </div>
+                          <p className="text-gray-700 leading-relaxed">{review.comment}</p>
+                          {review.images && review.images.length > 0 && (
+                            <div className="flex gap-2">
+                              {review.images.map((image: string, index: number) => (
+                                <div key={index} className="w-20 h-20 rounded-lg overflow-hidden border">
+                                  <Image
+                                    src={image}
+                                    alt={`Review image ${index + 1}`}
+                                    width={80}
+                                    height={80}
+                                    className="w-full h-full object-cover"
+                                  />
+                                </div>
+                              ))}
+                            </div>
+                          )}
+                          <div className="flex items-center gap-2 text-sm text-gray-500">
+                            <ThumbsUp className="h-4 w-4" />
+                            <span>{review.helpfulCount} helpful</span>
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-2 md:flex-col md:items-end">
+                          <div className="flex flex-col gap-2">
+                            {review.status !== "approved" && (
+                              <Button
+                                size="sm"
+                                onClick={() => handleReviewStatusChange(review.id, "approved")}
+                                disabled={isSubmitting}
+                                className="bg-green-600 hover:bg-green-700"
+                              >
+                                <CheckCircle className="mr-2 h-4 w-4" />
+                                Approve
+                              </Button>
+                            )}
+                            {review.status !== "rejected" && (
+                              <Button
+                                size="sm"
+                                variant="destructive"
+                                onClick={() => handleReviewStatusChange(review.id, "rejected")}
+                                disabled={isSubmitting}
+                              >
+                                <XCircle className="mr-2 h-4 w-4" />
+                                Reject
+                              </Button>
+                            )}
+                            {review.status === "approved" && (
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                onClick={() => handleReviewStatusChange(review.id, "rejected")}
+                                disabled={isSubmitting}
+                                className="border-red-200 text-red-700 hover:bg-red-50"
+                              >
+                                <XCircle className="mr-2 h-4 w-4" />
+                                Change to Rejected
+                              </Button>
+                            )}
+                            {review.status === "rejected" && (
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                onClick={() => handleReviewStatusChange(review.id, "approved")}
+                                disabled={isSubmitting}
+                                className="border-green-200 text-green-700 hover:bg-green-50"
+                              >
+                                <CheckCircle className="mr-2 h-4 w-4" />
+                                Change to Approved
+                              </Button>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+                </div>
               </CardContent>
-            </Card>
-          </TabsContent>
+            </TabsContent>
 
-          <TabsContent value="analytics">
-            <Card>
-              <CardHeader>
-                <CardTitle>Platform Analytics</CardTitle>
-                <CardDescription>High-level view of listing performance and growth.</CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-4">
+            <TabsContent value="analytics" className="m-0">
+              <CardContent className="p-6">
+                <div>
+                  <h2 className="text-xl font-bold text-gray-900 mb-2">Platform Analytics</h2>
+                  <p className="text-sm text-gray-600 mb-4">High-level view of listing performance and growth.</p>
+                  <div className="space-y-4">
                 <div className="rounded-xl border bg-white p-6">
                   <div className="flex items-center gap-3 text-gray-600">
                     <TrendingUp className="h-5 w-5 text-orange-500" />
@@ -844,11 +1423,13 @@ export default function AdminDashboard() {
                     )}
                   </div>
                 </div>
+                  </div>
+                </div>
               </CardContent>
-            </Card>
-          </TabsContent>
-        </Tabs>
-      </main>
+            </TabsContent>
+          </Tabs>
+        </Card>
+      </div>
     </div>
   )
 }

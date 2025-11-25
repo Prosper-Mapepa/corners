@@ -1,10 +1,12 @@
 "use client"
 
+import { Fragment, useEffect, useState, useMemo } from "react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Input } from "@/components/ui/input"
-import { Users, Utensils, Hotel, Music, Camera, Shield, Star, ArrowRight, Download } from "lucide-react"
+import { MapPin, Users, Utensils, Hotel, Music, Camera, Shield, Star, ArrowRight, Play, Download, Sparkles } from "lucide-react"
+import { AfricaIcon } from "@/components/AfricaIcon"
 import Link from "next/link"
 import Image from "next/image"
 import Africa from "@/assets/africa.png"
@@ -18,9 +20,134 @@ import Drums from "@/assets/african-drums.png"
 import Mask from "@/assets/mask.png"
 import Globe from "@/assets/globe.png"
 import Woman from "@/assets/woman.png"
+import Happy from "@/assets/happy.png"
+import Shirt from "@/assets/shirt.png"
+import AfricanDrum from "@/assets/african-drum.png"
+import Djembe from "@/assets/djembe.png"
+import { api } from "@/lib/api"
 
+type ApiLocation = {
+  id: string
+  name: string
+  slug: string
+  city?: string | null
+  country?: string | null
+}
+
+type ApiPlace = {
+  id: string
+  name: string
+  location: ApiLocation
+  rating: number
+  reviews: number
+  imageUrl?: string | null
+  status: string
+}
+
+const locationImageMap: Record<string, any> = {
+  "lagos": Lagos,
+  "cape-town": Captown,
+  "nairobi": Nairobi,
+  "accra": Accra,
+}
 
 export default function HomePage() {
+  const [locations, setLocations] = useState<ApiLocation[]>([])
+  const [places, setPlaces] = useState<ApiPlace[]>([])
+  const [isLoading, setIsLoading] = useState(true)
+
+  useEffect(() => {
+    const fetchData = async () => {
+      try {
+        setIsLoading(true)
+        const [locationsResponse, placesResponse] = await Promise.all([
+          api.get<ApiLocation[]>("/locations"),
+          api.get<ApiPlace[]>("/places?status=approved"),
+        ])
+        setLocations(locationsResponse)
+        setPlaces(
+          placesResponse.map((place) => ({
+            ...place,
+            rating: typeof place.rating === "string" ? parseFloat(place.rating) : place.rating,
+          })),
+        )
+      } catch (err) {
+        console.error("Failed to load data:", err)
+      } finally {
+        setIsLoading(false)
+      }
+    }
+
+    fetchData()
+  }, [])
+
+  const popularDestinations = useMemo(() => {
+    // Group places by location and calculate stats
+    const locationStats = new Map<string, {
+      location: ApiLocation
+      places: ApiPlace[]
+      totalSpots: number
+      avgRating: number
+      totalReviews: number
+    }>()
+
+    places.forEach((place) => {
+      const locationId = place.location?.id
+      if (!locationId) return
+
+      if (!locationStats.has(locationId)) {
+        locationStats.set(locationId, {
+          location: place.location,
+          places: [],
+          totalSpots: 0,
+          avgRating: 0,
+          totalReviews: 0,
+        })
+      }
+
+      const stats = locationStats.get(locationId)!
+      stats.places.push(place)
+      stats.totalSpots += 1
+      stats.totalReviews += place.reviews || 0
+    })
+
+    // Calculate average ratings
+    locationStats.forEach((stats) => {
+      if (stats.places.length > 0) {
+        const totalRating = stats.places.reduce((sum, p) => sum + (p.rating || 0), 0)
+        stats.avgRating = totalRating / stats.places.length
+      }
+    })
+
+    // Convert to array, sort by total spots, and take top locations
+    return Array.from(locationStats.values())
+      .filter((stats) => stats.totalSpots > 0)
+      .sort((a, b) => b.totalSpots - a.totalSpots)
+      .slice(0, 8)
+      .map((stats) => {
+        const locationSlug = stats.location.slug.toLowerCase()
+        const image = locationImageMap[locationSlug] || locationImageMap[locationSlug.replace(/\s+/g, "-")] || Lagos
+        
+        // Generate highlight based on location name or category
+        const highlights: Record<string, string> = {
+          "lagos": "Vibrant nightlife & cuisine",
+          "cape-town": "Stunning landscapes & wine",
+          "nairobi": "Safari & urban culture",
+          "accra": "Rich history & beaches",
+        }
+        const highlight = highlights[locationSlug] || highlights[locationSlug.replace(/\s+/g, "-")] || "Amazing experiences"
+
+        return {
+          id: stats.location.id,
+          name: stats.location.name,
+          country: stats.location.country || stats.location.city || "",
+          spots: `${stats.totalSpots.toLocaleString()} spot${stats.totalSpots !== 1 ? "s" : ""}`,
+          image,
+          rating: Number(stats.avgRating.toFixed(1)),
+          highlight,
+        }
+      })
+  }, [places])
   const features = [
     {
       icon: Utensils,
@@ -182,7 +309,7 @@ export default function HomePage() {
                   <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-yellow-400 opacity-75"></span>
                   <span className="relative inline-flex rounded-full h-3 w-3 bg-yellow-500"></span>
                 </span>
-                🌍 Discover Africa&rsquo;s Hidden Gems
+                🌍 Discover Africa's Hidden Gems
               </span>
             </div> */}
 
@@ -466,113 +593,70 @@ export default function HomePage() {
           <div className="absolute right-0 top-0 bottom-0 w-24 bg-gradient-to-l from-amber-50 to-transparent z-10 opacity-30" />
           
           <div className="flex gap-6 animate-scroll-slow hover:pause px-4">
-            {[
-              {
-                name: "Lagos",
-                country: "Nigeria",
-                spots: "2,847 spots",
-                image: Lagos,
-                rating: 4.8,
-                highlight: "Vibrant nightlife & cuisine",
-              },
-              {
-                name: "Cape Town",
-                country: "South Africa",
-                spots: "1,923 spots",
-                image: Captown,
-                rating: 4.9,
-                highlight: "Stunning landscapes & wine",
-              },
-              {
-                name: "Nairobi",
-                country: "Kenya",
-                spots: "1,456 spots",
-                image: Nairobi,
-                rating: 4.7,
-                highlight: "Safari & urban culture",
-              },
-              {
-                name: "Accra",
-                country: "Ghana",
-                spots: "987 spots",
-                image: Accra,
-                rating: 4.6,
-                highlight: "Rich history & beaches",
-              },
-              // Duplicate destinations for continuous scroll
-              {
-                name: "Lagos",
-                country: "Nigeria",
-                spots: "2,847 spots",
-                image: Lagos,
-                rating: 4.8,
-                highlight: "Vibrant nightlife & cuisine",
-              },
-              {
-                name: "Cape Town",
-                country: "South Africa",
-                spots: "1,923 spots",
-                image: Captown,
-                rating: 4.9,
-                highlight: "Stunning landscapes & wine",
-              },
-              {
-                name: "Nairobi",
-                country: "Kenya",
-                spots: "1,456 spots",
-                image: Nairobi,
-                rating: 4.7,
-                highlight: "Safari & urban culture",
-              },
-              {
-                name: "Accra",
-                country: "Ghana",
-                spots: "987 spots",
-                image: Accra,
-                rating: 4.6,
-                highlight: "Rich history & beaches",
-              },
-            ].map((destination, index) => (
-              <Card
-                key={index}
-                className="flex-shrink-0 w-[400px] border-2 border-transparent shadow-md hover:shadow-lg hover:border-amber-400/50 transition-all duration-500 cursor-pointer group overflow-hidden transform hover:-translate-y-1"
-              >
-                <CardContent className="p-0">
-                  <div className="relative overflow-hidden">
-                    <Image
-                      src={destination.image}
-                      alt={destination.name}
-                      width={400}
-                      height={300}
-                      className="w-full h-[400px] object-cover group-hover:scale-110 transition-transform duration-700"
-                    />
-                    <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/40 to-transparent opacity-80 group-hover:opacity-90 transition-opacity duration-300" />
-                    <div className="absolute top-4 right-4">
-                      <Badge className="bg-white/90 text-gray-900 border-0 shadow-sm group-hover:bg-yellow-400 transition-colors duration-300 text-sm">
-                        <Star className="w-3 h-3 mr-1 text-yellow-500 fill-current" />
-                        {destination.rating}
-                      </Badge>
+            {isLoading ? (
+              // Loading skeleton
+              Array.from({ length: 4 }).map((_, index) => (
+                <Card
+                  key={index}
+                  className="flex-shrink-0 w-[400px] border-2 border-transparent shadow-md"
+                >
+                  <CardContent className="p-0">
+                    <div className="relative overflow-hidden">
+                      <div className="w-full h-[400px] bg-gray-200 animate-pulse" />
                     </div>
-                    <div className="absolute bottom-0 left-0 right-0 p-6 transform translate-y-2 group-hover:translate-y-0 transition-transform duration-300">
-                      <h3 className="text-2xl font-bold text-white mb-2 group-hover:text-yellow-300 transition-colors duration-300">
-                        {destination.name}
-                      </h3>
-                      <p className="text-base text-orange-200 font-medium mb-2">{destination.country}</p>
-                      <p className="text-sm text-white/90 mb-3">{destination.spots}</p>
-                      <div className="flex items-center space-x-3">
-                        <Badge className="bg-white/20 backdrop-blur-sm text-white border-0 px-3 py-1.5 text-sm">
-                          {destination.highlight}
+                  </CardContent>
+                </Card>
+              ))
+            ) : popularDestinations.length === 0 ? (
+              <div className="w-full text-center py-12 text-gray-500">
+                <p>No destinations available yet. Check back soon!</p>
+              </div>
+            ) : (
+              // Duplicate destinations for continuous scroll effect
+              [...popularDestinations, ...popularDestinations].map((destination, index) => (
+                <Card
+                  key={index}
+                  className="flex-shrink-0 w-[400px] border-2 border-transparent shadow-md hover:shadow-lg hover:border-amber-400/50 transition-all duration-500 cursor-pointer group overflow-hidden transform hover:-translate-y-1"
+                >
+                  <CardContent className="p-0">
+                    <div className="relative overflow-hidden">
+                      <Image
+                        src={destination.image}
+                        alt={destination.name}
+                        width={400}
+                        height={300}
+                        className="w-full h-[400px] object-cover group-hover:scale-110 transition-transform duration-700"
+                      />
+                      <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/40 to-transparent opacity-80 group-hover:opacity-90 transition-opacity duration-300" />
+                      <div className="absolute top-4 right-4">
+                        <Badge className="bg-white/90 text-gray-900 border-0 shadow-sm group-hover:bg-yellow-400 transition-colors duration-300 text-sm">
+                          <Star className="w-3 h-3 mr-1 text-yellow-500 fill-current" />
+                          {destination.rating}
                         </Badge>
-                        <Button size="sm" variant="secondary" className="bg-white/20 backdrop-blur-sm hover:bg-white/30 text-white px-4">
-                          Explore
-                          <ArrowRight className="w-4 h-4 ml-1.5" />
-                        </Button>
+                      </div>
+                      <div className="absolute bottom-0 left-0 right-0 p-6 transform translate-y-2 group-hover:translate-y-0 transition-transform duration-300">
+                        <h3 className="text-2xl font-bold text-white mb-2 group-hover:text-yellow-300 transition-colors duration-300">
+                          {destination.name}
+                        </h3>
+                        <p className="text-base text-orange-200 font-medium mb-2">{destination.country}</p>
+                        <p className="text-sm text-white/90 mb-3">{destination.spots}</p>
+                        <div className="flex items-center space-x-3">
+                          <Badge className="bg-white/20 backdrop-blur-sm text-white border-0 px-3 py-1.5 text-sm">
+                            {destination.highlight}
+                          </Badge>
+                          <Link href={`/discover?location=${destination.id}`}>
+                            <Button size="sm" variant="secondary" className="bg-white/20 backdrop-blur-sm hover:bg-white/30 text-white px-4">
+                              Explore
+                              <ArrowRight className="w-4 h-4 ml-1.5" />
+                            </Button>
+                          </Link>
+                        </div>
                       </div>
                     </div>
-                  </div>
-                </CardContent>
-              </Card>
-            ))}
+                  </CardContent>
+                </Card>
+              ))
+            )}
           </div>
         </div>
 
@@ -788,7 +872,7 @@ export default function HomePage() {
           <div className="mt-12 pt-8 border-t border-orange-400/20">
             <div className="flex flex-col md:flex-row justify-between items-center">
               <p className="text-orange-200/80 text-sm mb-4 md:mb-0">
-                © 2024 Corners. Made with ❤️ for Africa.
+                © 2025 Corners. Made with ❤️ for Africa.
               </p>
               <div className="flex space-x-6">
                 <Link href="/privacy" className="text-orange-200 hover:text-white text-sm transition-colors duration-200">

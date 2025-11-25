@@ -1,6 +1,7 @@
 "use client"
 
-import { useEffect, useMemo, useState } from "react"
+import { Suspense, useEffect, useMemo, useState } from "react"
+import { useSearchParams } from "next/navigation"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
@@ -24,6 +25,9 @@ import Link from "next/link"
 import Image from "next/image"
 
 import { api } from "@/lib/api"
+import { useAuth } from "@/hooks/use-auth"
+import { LogoutButton } from "@/components/auth/logout-button"
+import { PlaceActions } from "@/components/place-actions"
 
 type ApiCategory = {
   id: string
@@ -49,6 +53,8 @@ type ApiPlace = {
   rating: number
   reviews: number
   priceLevel: string
+  priceRangeMin?: number | null
+  priceRangeMax?: number | null
   imageUrl?: string | null
   isOpen: boolean
   tags: string[]
@@ -58,18 +64,30 @@ type ApiPlace = {
   status: string
 }
 
-export default function DiscoverPage() {
+function DiscoverContent() {
+  const { user } = useAuth()
+  const searchParams = useSearchParams()
   const [searchQuery, setSearchQuery] = useState("")
   const [selectedCategory, setSelectedCategory] = useState("all")
-  const [selectedLocation, setSelectedLocation] = useState("all")
+  const [selectedLocation, setSelectedLocation] = useState(searchParams.get("location") || "all")
   const [viewMode, setViewMode] = useState("grid")
   const [showFilters, setShowFilters] = useState(false)
   const [priceRange, setPriceRange] = useState<[number, number]>([1, 4])
+  const [minRating, setMinRating] = useState<string>("any")
+  const [maxDistance, setMaxDistance] = useState<string>("any")
   const [categories, setCategories] = useState<ApiCategory[]>([])
   const [locations, setLocations] = useState<ApiLocation[]>([])
   const [places, setPlaces] = useState<ApiPlace[]>([])
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+
+  // Price level to range mapping
+  const priceLevelToRange = {
+    1: { min: 0, max: 25, label: "$0 - $25" },
+    2: { min: 25, max: 50, label: "$25 - $50" },
+    3: { min: 50, max: 100, label: "$50 - $100" },
+    4: { min: 100, max: Infinity, label: "$100+" },
+  }
 
   useEffect(() => {
     let isMounted = true
@@ -164,16 +182,61 @@ export default function DiscoverPage() {
 
   const filteredPlaces = useMemo(() => {
     return places.filter((place) => {
+      // Category filter
       if (selectedCategory !== "all" && place.category?.id !== selectedCategory) {
         return false
       }
+      
+      // Location filter
       if (selectedLocation !== "all" && place.location?.id !== selectedLocation) {
         return false
       }
-      const priceLevelValue = place.priceLevel?.length ?? 1
-      if (priceLevelValue < priceRange[0] || priceLevelValue > priceRange[1]) {
+      
+      // Price filter - check both priceLevel and priceRangeMin/Max
+      let priceMatches = false
+      
+      // First, check if place has actual price range values
+      if (place.priceRangeMin !== undefined && place.priceRangeMin !== null && 
+          place.priceRangeMax !== undefined && place.priceRangeMax !== null) {
+        const filterMinRange = priceLevelToRange[priceRange[0] as keyof typeof priceLevelToRange]
+        const filterMaxRange = priceLevelToRange[priceRange[1] as keyof typeof priceLevelToRange]
+        
+        // Check if place's price range overlaps with filter range
+        const placeMin = place.priceRangeMin
+        const placeMax = place.priceRangeMax
+        const filterMin = filterMinRange.min
+        const filterMax = filterMaxRange.max === Infinity ? 10000 : filterMaxRange.max
+        
+        // Check if there's any overlap
+        priceMatches = !(placeMax < filterMin || placeMin > filterMax)
+      } else {
+        // Fall back to price level matching
+        const priceLevelValue = place.priceLevel?.length ?? 1
+        priceMatches = priceLevelValue >= priceRange[0] && priceLevelValue <= priceRange[1]
+      }
+      
+      if (!priceMatches) {
         return false
       }
+      
+      // Rating filter
+      if (minRating !== "any") {
+        const minRatingValue = parseFloat(minRating)
+        if (place.rating < minRatingValue) {
+          return false
+        }
+      }
+      
+      // Distance filter
+      if (maxDistance !== "any" && place.distance) {
+        const distanceValue = parseFloat(place.distance.replace(/[^0-9.]/g, ""))
+        const maxDistanceValue = parseFloat(maxDistance)
+        if (distanceValue > maxDistanceValue) {
+          return false
+        }
+      }
+      
+      // Search query filter
       if (searchQuery) {
         const query = searchQuery.toLowerCase()
         const haystack = [
@@ -190,9 +253,10 @@ export default function DiscoverPage() {
           return false
         }
       }
+      
       return true
     })
-  }, [places, selectedCategory, selectedLocation, priceRange, searchQuery])
+  }, [places, selectedCategory, selectedLocation, priceRange, minRating, maxDistance, searchQuery, priceLevelToRange])
 
 
   return (
@@ -226,13 +290,38 @@ export default function DiscoverPage() {
               </Link>
             </nav>
             <div className="flex items-center space-x-4">
-              <Button variant="ghost" size="sm" className="hover:bg-orange-50">
-                <Heart className="w-4 h-4 mr-2" />
-                Saved (3)
-              </Button>
-              <div className="w-8 h-8 bg-gradient-to-r from-orange-500 to-red-500 rounded-full flex items-center justify-center text-white font-semibold">
-                U
-              </div>
+              {user ? (
+                <>
+                  <Button variant="ghost" size="sm" className="hover:bg-orange-50" asChild>
+                    <Link href="/saved">
+                      <Heart className="w-4 h-4 mr-2" />
+                      Saved
+                    </Link>
+                  </Button>
+                  <Link
+                    href="/profile"
+                    className="w-9 h-9 bg-gradient-to-r from-orange-500 to-red-500 rounded-full flex items-center justify-center text-white font-semibold"
+                  >
+                    {user.name?.charAt(0)?.toUpperCase() ?? user.email.charAt(0).toUpperCase()}
+                  </Link>
+                  <LogoutButton variant="ghost" size="sm" className="hover:bg-orange-50">
+                    Log out
+                  </LogoutButton>
+                </>
+              ) : (
+                <>
+                  <Button variant="ghost" size="sm" className="hover:bg-orange-50" asChild>
+                    <Link href="/login">Sign in</Link>
+                  </Button>
+                  <Button
+                    size="sm"
+                    className="bg-gradient-to-r from-orange-500 to-red-500 hover:from-orange-600 hover:to-red-600 text-white"
+                    asChild
+                  >
+                    <Link href="/register">Join Corners</Link>
+                  </Button>
+                </>
+              )}
             </div>
           </div>
         </div>
@@ -285,7 +374,7 @@ export default function DiscoverPage() {
             <div className="bg-gray-50 rounded-xl p-6 space-y-6">
               <div className="grid md:grid-cols-3 gap-6">
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">Price Level</label>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">Price Range</label>
                   <Slider
                     value={priceRange}
                     onValueChange={(value) => setPriceRange([value[0] ?? 1, value[1] ?? value[0] ?? 4])}
@@ -294,36 +383,38 @@ export default function DiscoverPage() {
                     step={1}
                     className="w-full"
                   />
-                  <div className="flex justify-between text-sm text-gray-500 mt-1">
-                    <span>{"$".repeat(priceRange[0]) || "$"}</span>
-                    <span>{"$".repeat(priceRange[1]) || "$$$$"}</span>
+                  <div className="flex justify-between text-sm text-gray-600 mt-2 font-medium">
+                    <span>{priceLevelToRange[priceRange[0] as keyof typeof priceLevelToRange]?.label || "$0 - $25"}</span>
+                    <span>{priceLevelToRange[priceRange[1] as keyof typeof priceLevelToRange]?.label || "$100+"}</span>
                   </div>
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-2">Rating</label>
-                  <Select>
+                  <Select value={minRating} onValueChange={setMinRating}>
                     <SelectTrigger>
                       <SelectValue placeholder="Any rating" />
                     </SelectTrigger>
                     <SelectContent>
+                      <SelectItem value="any">Any rating</SelectItem>
                       <SelectItem value="4.5">4.5+ stars</SelectItem>
                       <SelectItem value="4.0">4.0+ stars</SelectItem>
                       <SelectItem value="3.5">3.5+ stars</SelectItem>
-                      <SelectItem value="any">Any rating</SelectItem>
+                      <SelectItem value="3.0">3.0+ stars</SelectItem>
                     </SelectContent>
                   </Select>
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-2">Distance</label>
-                  <Select>
+                  <Select value={maxDistance} onValueChange={setMaxDistance}>
                     <SelectTrigger>
                       <SelectValue placeholder="Any distance" />
                     </SelectTrigger>
                     <SelectContent>
+                      <SelectItem value="any">Any distance</SelectItem>
                       <SelectItem value="1">Within 1 km</SelectItem>
                       <SelectItem value="5">Within 5 km</SelectItem>
                       <SelectItem value="10">Within 10 km</SelectItem>
-                      <SelectItem value="any">Any distance</SelectItem>
+                      <SelectItem value="25">Within 25 km</SelectItem>
                     </SelectContent>
                   </Select>
                 </div>
@@ -440,13 +531,8 @@ export default function DiscoverPage() {
                       viewMode === "grid" ? "h-48" : "h-32"
                     }`}
                   />
-                  <div className="absolute top-3 right-3 flex gap-2">
-                    <Button size="sm" variant="secondary" className="bg-white/90 hover:bg-white rounded-full">
-                      <Heart className="w-4 h-4" />
-                    </Button>
-                    <Button size="sm" variant="secondary" className="bg-white/90 hover:bg-white rounded-full">
-                      <Share2 className="w-4 h-4" />
-                    </Button>
+                  <div className="absolute top-3 right-3 z-10">
+                    <PlaceActions placeId={place.id} variant="compact" showFollow={user?.role === "user"} />
                   </div>
                   <div className="absolute top-3 left-3 flex gap-2">
                     {place.featured && (
@@ -481,7 +567,12 @@ export default function DiscoverPage() {
                     </div>
                     <div className="flex items-center text-lg font-bold text-gray-900">
                       <DollarSign className="w-5 h-5" />
-                      <span>{place.priceLevel || "$$"}</span>
+                      <span>
+                        {place.priceRangeMin !== undefined && place.priceRangeMin !== null && 
+                         place.priceRangeMax !== undefined && place.priceRangeMax !== null
+                          ? `$${place.priceRangeMin} - $${place.priceRangeMax}`
+                          : place.priceLevel || "$$"}
+                      </span>
                     </div>
                   </div>
 
@@ -544,5 +635,19 @@ export default function DiscoverPage() {
         </div>
       </div>
     </div>
+  )
+}
+
+export default function DiscoverPage() {
+  return (
+    <Suspense
+      fallback={
+        <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-amber-50 via-orange-50 to-red-50">
+          <p className="text-gray-600">Loading experiences...</p>
+        </div>
+      }
+    >
+      <DiscoverContent />
+    </Suspense>
   )
 }

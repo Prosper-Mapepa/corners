@@ -11,6 +11,7 @@ import { Checkbox } from "@/components/ui/checkbox"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { api } from "@/lib/api"
+import { useAuth } from "@/hooks/use-auth"
 
 type AuthResponse = {
   accessToken: string
@@ -22,12 +23,11 @@ type AuthResponse = {
   }
 }
 
-const TOKEN_STORAGE_KEY = "corners.accessToken"
-const USER_STORAGE_KEY = "corners.user"
 const REMEMBER_EMAIL_KEY = "corners.rememberedEmail"
 
 export default function LoginPage() {
   const router = useRouter()
+  const { setAuth, user, token } = useAuth()
   const [email, setEmail] = useState("")
   const [password, setPassword] = useState("")
   const [rememberMe, setRememberMe] = useState(true)
@@ -41,14 +41,25 @@ export default function LoginPage() {
     }
   }, [])
 
+  useEffect(() => {
+    if (user && token) {
+      if (user.role === "admin" || user.role === "super_admin") {
+        router.replace("/admin")
+      } else if (user.role === "business") {
+        router.replace("/business/dashboard")
+      } else {
+        router.replace("/discover")
+      }
+    }
+  }, [router, token, user])
+
   const handleSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault()
     setIsLoading(true)
     setError(null)
     try {
       const response = await api.post<AuthResponse>("/auth/login", { email, password })
-      localStorage.setItem(TOKEN_STORAGE_KEY, response.accessToken)
-      localStorage.setItem(USER_STORAGE_KEY, JSON.stringify(response.user))
+      setAuth(response.accessToken, response.user)
       if (rememberMe) {
         localStorage.setItem(REMEMBER_EMAIL_KEY, email)
       } else {

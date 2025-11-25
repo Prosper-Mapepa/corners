@@ -1,0 +1,4 @@
+#!/bin/sh
+# Dummy placeholder to satisfy missing helper in Cursor shell instrumentation.
+exit 0
+
