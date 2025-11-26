@@ -34,7 +34,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Textarea } from "@/components/ui/textarea"
 import { api } from "@/lib/api"
 import { useAuth } from "@/hooks/use-auth"
-import { LogoutButton } from "@/components/auth/logout-button"
+import { DashboardNav } from "@/components/dashboard-nav"
 import {
   MetadataInputs,
   PlaceMetadata,
@@ -365,42 +365,9 @@ export default function BusinessDashboard() {
 
   return (
     <div className="min-h-screen bg-gray-50">
-      <header className="bg-white shadow-sm border-b">
-        <div className="max-w-[1600px] mx-auto px-6 sm:px-8 lg:px-12">
-          <div className="flex justify-between items-center h-16">
-            <Link href="/" className="flex items-center space-x-2">
-              <div className="w-8 h-8 bg-gradient-to-r from-orange-500 to-red-500 rounded-lg flex items-center justify-center">
-                <MapPin className="w-5 h-5 text-white" />
-              </div>
-              <span className="text-2xl font-bold text-gray-900">Corners</span>
-              <Badge variant="secondary">Business</Badge>
-            </Link>
-            <nav className="hidden md:flex space-x-8">
-              <Link href="/business/dashboard" className="text-orange-600 font-medium">
-                Dashboard
-              </Link>
-              <Link href="/discover" className="text-gray-700 hover:text-orange-600 transition-colors">
-                Discover
-              </Link>
-              <Link href="/business/profile" className="text-gray-700 hover:text-orange-600 transition-colors">
-                Profile
-              </Link>
-            </nav>
-            <div className="flex items-center space-x-4">
-              <div className="flex items-center space-x-2">
-                <div className="w-8 h-8 bg-orange-500 rounded-full flex items-center justify-center text-white font-semibold">
-                  {userInitial}
-                </div>
-                <LogoutButton variant="link" className="text-sm text-gray-600">
-                  Log out
-                </LogoutButton>
-              </div>
-            </div>
-          </div>
-        </div>
-      </header>
+      <DashboardNav variant="business" />
 
-      <div className="max-w-[1600px] mx-auto px-6 sm:px-8 lg:px-12 py-8">
+      <div className="max-w-8xl mx-auto px-6 sm:px-8 lg:px-12 py-8">
         {/* Header Section */}
         <div className="mb-6">
           <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
@@ -408,7 +375,8 @@ export default function BusinessDashboard() {
               <h1 className="text-3xl font-bold text-gray-900 mb-1">
                 {user ? (
                   <>
-                    Hello, <span className="text-orange-600">{user.name?.split(' ')[0] ?? user.email?.split('@')[0] ?? 'there'}!</span>
+                    Business Dashboard
+                    {/* <span className="text-orange-600">{user.name?.split(' ')[0] ?? user.email?.split('@')[0] ?? 'there'}!</span> */}
                   </>
                 ) : (
                   "Business Dashboard"

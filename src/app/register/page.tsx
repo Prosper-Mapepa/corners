@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
-import { MapPin, Mail, Phone, User, Lock, Globe, Loader2 } from "lucide-react"
+import { MapPin, Mail, Phone, User, Lock, Globe, Loader2, ArrowLeft } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader } from "@/components/ui/card"
@@ -97,8 +97,19 @@ export default function RegisterPage() {
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-orange-50 to-red-50 flex items-center justify-center p-4">
-      <Card className="w-full max-w-xl">
-        <CardHeader className="text-center">
+      <div className="w-full max-w-xl">
+        <Button
+          variant="ghost"
+          className="mb-4 text-gray-600 hover:text-gray-900"
+          asChild
+        >
+          <Link href="/">
+            <ArrowLeft className="w-4 h-4 mr-2" />
+            Back to Home
+          </Link>
+        </Button>
+        <Card className="w-full">
+          <CardHeader className="text-center">
           <div className="flex items-center justify-center space-x-2 mb-4">
             <div className="w-10 h-10 bg-gradient-to-r from-orange-500 to-red-500 rounded-lg flex items-center justify-center">
               <MapPin className="w-6 h-6 text-white" />
@@ -337,7 +348,8 @@ export default function RegisterPage() {
             </Link>
           </div>
         </CardContent>
-      </Card>
+        </Card>
+      </div>
     </div>
   )
 }

@@ -13,6 +13,7 @@ import { useAuth } from "@/hooks/use-auth"
 import { api } from "@/lib/api"
 import { useRouter } from "next/navigation"
 import { PlaceActions } from "@/components/place-actions"
+import { DashboardNav } from "@/components/dashboard-nav"
 
 type SavedPlace = {
   id: string
@@ -148,39 +149,9 @@ export default function SavedPage() {
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-amber-50 via-orange-50 to-red-50">
-      {/* Header */}
-      <header className="bg-white/95 backdrop-blur-sm shadow-sm border-b sticky top-0 z-50">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex justify-between items-center h-16">
-            <Link href="/" className="flex items-center space-x-3">
-              <div className="w-8 h-8 bg-gradient-to-br from-amber-500 via-orange-500 to-red-500 rounded-xl flex items-center justify-center">
-                <MapPin className="w-5 h-5 text-white" />
-              </div>
-              <span className="text-xl font-bold bg-gradient-to-r from-orange-600 to-red-600 bg-clip-text text-transparent">
-                Corners
-              </span>
-            </Link>
-            <nav className="hidden md:flex space-x-8">
-              <Link href="/discover" className="text-gray-700 hover:text-orange-600 transition-colors">
-                Discover
-              </Link>
-              <Link href="/profile" className="text-gray-700 hover:text-orange-600 transition-colors">
-                Profile
-              </Link>
-              <Link href="/saved" className="text-orange-600 font-medium">
-                Saved
-              </Link>
-            </nav>
-            <div className="flex items-center space-x-4">
-              <div className="w-8 h-8 bg-gradient-to-r from-orange-500 to-red-500 rounded-full flex items-center justify-center text-white font-semibold">
-                U
-              </div>
-            </div>
-          </div>
-        </div>
-      </header>
+      <DashboardNav variant="explorer" />
 
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+      <div className="mx-auto px-4 sm:px-6 lg:px-8 py-8">
         {/* Header */}
         <div className="mb-8">
           <h1 className="text-4xl font-bold text-gray-900 mb-2">Your Saved Places</h1>

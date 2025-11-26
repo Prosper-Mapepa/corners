@@ -33,7 +33,7 @@ import {
   ThumbsUp,
 } from "lucide-react"
 import { useAuth } from "@/hooks/use-auth"
-import { LogoutButton } from "@/components/auth/logout-button"
+import { DashboardNav } from "@/components/dashboard-nav"
 import { MetadataInputs, PlaceMetadata, emptyMetadataInputs, metadataFromInputs } from "@/lib/place-metadata"
 import {
   TAG_OPTIONS,
@@ -389,29 +389,7 @@ export default function AdminDashboard() {
 
   return (
     <div className="min-h-screen bg-gray-50">
-      <header className="bg-white shadow-sm border-b">
-        <div className="max-w-[1600px] mx-auto px-6 sm:px-8 lg:px-12">
-          <div className="flex justify-between items-center h-16">
-            <div className="flex items-center space-x-2">
-              <div className="w-8 h-8 bg-gradient-to-r from-orange-500 to-red-500 rounded-lg flex items-center justify-center">
-                <Building2 className="w-5 h-5 text-white" />
-              </div>
-              <span className="text-2xl font-bold text-gray-900">Corners</span>
-              <Badge variant="secondary">Admin</Badge>
-            </div>
-            <div className="flex items-center space-x-4">
-              <div className="flex items-center space-x-2">
-                <div className="w-8 h-8 bg-orange-500 rounded-full flex items-center justify-center text-white font-semibold">
-                  {userFirstName.charAt(0).toUpperCase()}
-                </div>
-                <LogoutButton variant="link" className="text-sm text-gray-600">
-                  Log out
-                </LogoutButton>
-              </div>
-            </div>
-          </div>
-        </div>
-      </header>
+      <DashboardNav variant="admin" />
 
       <div className="max-w-[1600px] mx-auto px-6 sm:px-8 lg:px-12 py-8">
         {/* Header Section */}
@@ -421,7 +399,8 @@ export default function AdminDashboard() {
               <h1 className="text-3xl font-bold text-gray-900 mb-1">
                 {user ? (
                   <>
-                    Hello, <span className="text-orange-600">{userFirstName}!</span>
+                    Admin Dashboard
+                     {/* <span className="text-orange-600">{userFirstName}!</span> */}
                   </>
                 ) : (
                   "Admin Dashboard"
@@ -467,8 +446,8 @@ export default function AdminDashboard() {
                   <p className="text-3xl font-bold text-gray-900 mb-2">{totalUsers}</p>
                   <p className="text-sm text-gray-600">Including explorers, businesses & admins</p>
                 </div>
-                <div className="w-12 h-12 bg-blue-100 rounded-lg flex items-center justify-center">
-                  <Users className="w-6 h-6 text-blue-600" />
+                <div className=" w-12 h-12 bg-amber-100 rounded-lg flex items-center justify-center">
+                  <Users className="w-6 h-6 text-amber-500" />
                 </div>
               </div>
             </CardContent>
@@ -484,12 +463,12 @@ export default function AdminDashboard() {
                   </p>
                 </div>
                 <div className="w-12 h-12 bg-green-100 rounded-lg flex items-center justify-center">
-                  <Building2 className="w-6 h-6 text-green-600" />
+                  <Building2 className="w-6 h-6 text-green-500" />
                 </div>
               </div>
             </CardContent>
           </Card>
-          <Card className="border border-amber-100 shadow-sm hover:shadow-md transition-shadow bg-gradient-to-br from-amber-50/50 to-white">
+          <Card className="border border-blue-100 shadow-sm hover:shadow-md transition-shadow bg-gradient-to-br from-blue-50/50 to-white">
             <CardContent className="p-6">
               <div className="flex items-center justify-between">
                 <div className="flex-1">
@@ -498,7 +477,7 @@ export default function AdminDashboard() {
                   <p className="text-sm text-gray-600">From all approved listings</p>
                 </div>
                 <div className="w-12 h-12 bg-amber-100 rounded-lg flex items-center justify-center">
-                  <Star className="w-6 h-6 text-amber-600" />
+                  <Star className="w-6 h-6 text-amber-500" />
                 </div>
               </div>
             </CardContent>
@@ -514,7 +493,7 @@ export default function AdminDashboard() {
                   </p>
                 </div>
                 <div className="w-12 h-12 bg-orange-100 rounded-lg flex items-center justify-center">
-                  <AlertTriangle className="w-6 h-6 text-orange-600" />
+                  <AlertTriangle className="w-6 h-6 text-orange-500" />
                 </div>
               </div>
             </CardContent>

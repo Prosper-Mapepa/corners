@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Input } from "@/components/ui/input"
-import { MapPin, Users, Utensils, Hotel, Music, Camera, Shield, Star, ArrowRight, Play, Download, Sparkles } from "lucide-react"
+import { MapPin, Users, Utensils, Hotel, Music, Camera, Shield, Star, ArrowRight, Play, Download, Sparkles, Menu, X } from "lucide-react"
 import { AfricaIcon } from "@/components/AfricaIcon"
 import Link from "next/link"
 import Image from "next/image"
@@ -55,6 +55,7 @@ export default function HomePage() {
   const [locations, setLocations] = useState<ApiLocation[]>([])
   const [places, setPlaces] = useState<ApiPlace[]>([])
   const [isLoading, setIsLoading] = useState(true)
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
 
   useEffect(() => {
     const fetchData = async () => {
@@ -229,46 +230,46 @@ export default function HomePage() {
 
       {/* Header */}
       <header className="bg-[#C51A00] backdrop-blur-sm shadow-lg border-b border-orange-700/50 sticky top-0 z-50">
-        <div className=" mx-auto px-4 sm:px-6 lg:px-8">
+        <div className="mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex justify-between items-center h-16">
             <div className="flex items-center space-x-3">
-              <div className="w-10 h-10 flex items-center justify-center ">
+              <div className="w-8 h-8 sm:w-10 sm:h-10 flex items-center justify-center">
                 <Image src={Africaa} alt="Africa" width={40} height={40} className="inline-block" />
               </div>
               <div>
-                <span className="text-2xl font-bold text-transparent bg-clip-text bg-gradient-to-r from-yellow-400 via-orange-300 to-yellow-400">
+                <span className="text-xl sm:text-2xl font-bold text-transparent bg-clip-text bg-gradient-to-r from-yellow-400 via-orange-300 to-yellow-400">
                   Corners
                 </span>
-                <div className="text-xs text-orange-200 font-medium">African Lifestyle</div>
+                <div className="text-xs text-orange-200 font-medium hidden sm:block">African Lifestyle</div>
               </div>
             </div>
             <nav className="hidden md:flex space-x-8">
               <Link
                 href="/discover"
-                className="text-orange-100 hover:text-yellow-300 transition-all duration-200 font-medium"
+                className="text-orange-100 hover:text-yellow-300 transition-all duration-200 font-semibold"
               >
                 Discover
               </Link>
               <Link
                 href="/businesses"
-                className="text-orange-100 hover:text-yellow-300 transition-all duration-200 font-medium"
+                className="text-orange-100 hover:text-yellow-300 transition-all duration-200 font-semibold"
               >
                 For Business
               </Link>
               <Link
                 href="/events"
-                className="text-orange-100 hover:text-yellow-300 transition-all duration-200 font-medium"
+                className="text-orange-100 hover:text-yellow-300 transition-all duration-200 font-semibold"
               >
                 Events
               </Link>
               <Link
                 href="/about"
-                className="text-orange-100 hover:text-yellow-300 transition-all duration-200 font-medium"
+                className="text-orange-100 hover:text-yellow-300 transition-all duration-200 font-semibold"
               >
                 About
               </Link>
             </nav>
-            <div className="flex items-center space-x-4">
+            <div className="hidden md:flex items-center space-x-4">
               <Link href="/login">
                 <Button variant="ghost" className="text-orange-100 hover:text-yellow-300 hover:bg-orange-800/50">
                   Sign In
@@ -280,12 +281,68 @@ export default function HomePage() {
                 </Button>
               </Link>
             </div>
+            <Button
+              variant="ghost"
+              size="icon"
+              className="md:hidden text-orange-100 hover:text-yellow-300 hover:bg-orange-800/50"
+              onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
+            >
+              {mobileMenuOpen ? <X className="w-6 h-6" /> : <Menu className="w-6 h-6" />}
+            </Button>
           </div>
+          
+          {/* Mobile Menu */}
+          {mobileMenuOpen && (
+            <div className="md:hidden border-t border-orange-700/50 py-4">
+              <nav className="flex flex-col space-y-4">
+                <Link
+                  href="/discover"
+                  className="text-orange-100 hover:text-yellow-300 transition-all duration-200 font-semibold px-2"
+                  onClick={() => setMobileMenuOpen(false)}
+                >
+                  Discover
+                </Link>
+                <Link
+                  href="/businesses"
+                  className="text-orange-100 hover:text-yellow-300 transition-all duration-200 font-semibold px-2"
+                  onClick={() => setMobileMenuOpen(false)}
+                >
+                  For Business
+                </Link>
+                <Link
+                  href="/events"
+                  className="text-orange-100 hover:text-yellow-300 transition-all duration-200 font-semibold px-2"
+                  onClick={() => setMobileMenuOpen(false)}
+                >
+                  Events
+                </Link>
+                <Link
+                  href="/about"
+                  className="text-orange-100 hover:text-yellow-300 transition-all duration-200 font-semibold px-2"
+                  onClick={() => setMobileMenuOpen(false)}
+                >
+                  About
+                </Link>
+                <div className="flex flex-col space-y-2 pt-4 border-t border-orange-700/50">
+                  <Link href="/login" onClick={() => setMobileMenuOpen(false)}>
+                    <Button variant="ghost" className="w-full text-orange-100 hover:text-yellow-300 hover:bg-orange-800/50 justify-start">
+                      Sign In
+                    </Button>
+                  </Link>
+                  <Link href="/register" onClick={() => setMobileMenuOpen(false)}>
+                    <Button className="w-full bg-gradient-to-r from-amber-500 via-orange-500 to-red-500 hover:from-amber-600 hover:via-orange-600 hover:to-red-600">
+                      Get Started
+                    </Button>
+                  </Link>
+                </div>
+              </nav>
+            </div>
+          )}
         </div>
       </header>
 
       {/* Hero Section */}
-      <section className="relative py-24 px-4 sm:px-6 lg:px-8 overflow-hidden min-h-screen flex items-center">
+      <section className="relative py-12 sm:py-16 md:py-24 px-4 sm:px-6 lg:px-8 overflow-hidden min-h-screen flex items-center">
         <div className="absolute inset-0 w-full h-full">
           {/* Animated gradient backgrounds */}
           <div className="absolute inset-0 bg-gradient-radial from-amber-500 via-orange-600 to-red-700 animate-gradient-slow" />
@@ -294,47 +351,37 @@ export default function HomePage() {
           
           {/* Floating Orbs */}
           <div className="absolute inset-0 overflow-hidden">
-            <div className="absolute top-1/4 left-1/4 w-96 h-96 bg-yellow-500/20 rounded-full blur-3xl animate-float" />
-            <div className="absolute bottom-1/4 right-1/4 w-96 h-96 bg-orange-500/20 rounded-full blur-3xl animate-float-delayed" />
-            <div className="absolute top-3/4 left-1/3 w-64 h-64 bg-red-500/20 rounded-full blur-3xl animate-float-2" />
+            <div className="absolute top-1/4 left-1/4 w-64 h-64 sm:w-96 sm:h-96 bg-yellow-500/20 rounded-full blur-3xl animate-float" />
+            <div className="absolute bottom-1/4 right-1/4 w-64 h-64 sm:w-96 sm:h-96 bg-orange-500/20 rounded-full blur-3xl animate-float-delayed" />
+            <div className="absolute top-3/4 left-1/3 w-48 h-48 sm:w-64 sm:h-64 bg-red-500/20 rounded-full blur-3xl animate-float-2" />
           </div>
         </div>
 
         {/* Content */}
-        <div className="max-w-7xl mx-auto relative">
+        <div className="max-w-7xl mx-auto relative w-full">
           <div className="text-center">
-            {/* <div className="inline-flex items-center px-6 py-3 bg-orange-800/80 backdrop-blur-sm rounded-full border border-yellow-400/50 mb-8 transform hover:scale-105 transition-all duration-300">
-              <span className="text-yellow-300 font-medium flex items-center gap-3">
-                <span className="relative flex h-3 w-3">
-                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-yellow-400 opacity-75"></span>
-                  <span className="relative inline-flex rounded-full h-3 w-3 bg-yellow-500"></span>
-                </span>
-                🌍 Discover Africa's Hidden Gems
-              </span>
-            </div> */}
-
-            <h1 className="text-6xl md:text-7xl font-bold mb-8 leading-tight">
-              <div className="text-white animate-typing flex items-center justify-center gap-2">
-                Your <span className="inline-flex text-transparent bg-clip-text bg-gradient-to-r from-yellow-400 via-orange-300 to-yellow-400 items-center gap-2">African <Image src={Africa} alt="Africa" width={60} height={60} className="inline-block" /></span>
+            <h1 className="text-4xl sm:text-5xl md:text-6xl lg:text-7xl font-bold mb-6 sm:mb-8 leading-tight px-2">
+              <div className="text-white animate-typing flex flex-col sm:flex-row items-center justify-center gap-2">
+                Your <span className="inline-flex text-transparent bg-clip-text bg-gradient-to-r from-yellow-400 via-orange-300 to-yellow-400 items-center gap-2">African <Image src={Africa} alt="Africa" width={40} height={40} className="w-8 h-8 sm:w-12 sm:h-12 md:w-14 md:h-14 lg:w-16 lg:h-16 inline-block" /></span>
               </div>
               <div className="block text-white mt-2 animate-typing-delayed text-center">
                 Lifestyle Companion
               </div>
             </h1>
 
-            <p className="text-xl md:text-2xl text-orange-100 mb-12 max-w-4xl mx-auto leading-relaxed">
+            <p className="text-base sm:text-lg md:text-xl lg:text-2xl text-orange-100 mb-8 sm:mb-12 max-w-4xl mx-auto leading-relaxed px-4">
              Skip the tourist traps. Corners is your gateway to the best local experiences in Africa — From buzzing nightclubs to hidden gems, connect with local businesses, and explore vibrant culture, all from one app.
             </p>
 
-            <div className="flex flex-col sm:flex-row gap-6 justify-center items-center mb-16">
-              <Link href="/discover">
+            <div className="flex flex-col sm:flex-row gap-4 sm:gap-6 justify-center items-center mb-12 sm:mb-16 px-4">
+              <Link href="/discover" className="w-full sm:w-auto">
                 <Button
                   size="lg"
-                  className="bg-gradient-to-r from-yellow-500 via-orange-500 to-red-500 hover:from-yellow-600 hover:via-orange-600 hover:to-red-600 text-lg px-10 py-6 rounded-xl shadow-xl hover:shadow-2xl transition-all duration-300 transform hover:scale-105 font-medium relative overflow-hidden group"
+                  className="w-full sm:w-auto bg-gradient-to-r from-yellow-500 via-orange-500 to-red-500 hover:from-yellow-600 hover:via-orange-600 hover:to-red-600 text-base sm:text-lg px-8 sm:px-10 py-5 sm:py-6 rounded-xl shadow-xl hover:shadow-2xl transition-all duration-300 transform hover:scale-105 font-medium relative overflow-hidden group"
                 >
-                  <span className="relative z-10 flex items-center">
+                  <span className="relative z-10 flex items-center justify-center">
                     Start Exploring
-                    <ArrowRight className="ml-2 w-5 h-5 transform group-hover:translate-x-1 transition-transform duration-300" />
+                    <ArrowRight className="ml-2 w-4 h-4 sm:w-5 sm:h-5 transform group-hover:translate-x-1 transition-transform duration-300" />
                   </span>
                   <div className="absolute inset-0 bg-gradient-to-r from-yellow-600 via-orange-600 to-red-600 opacity-0 group-hover:opacity-100 transition-opacity duration-300"></div>
                 </Button>
@@ -343,18 +390,18 @@ export default function HomePage() {
               <Button
                 size="lg"
                 variant="outline"
-                className="text-lg px-10 py-6 rounded-xl border-2 border-yellow-400/50 text-white bg-gradient-to-r from-yellow-500/20 via-orange-500/20 to-red-500/20 hover:from-yellow-500/30 hover:via-orange-500/30 hover:to-red-500/30 hover:border-yellow-300 transition-all duration-300 backdrop-blur-sm group shadow-lg hover:shadow-yellow-500/20"
+                className="w-full sm:w-auto text-base sm:text-lg px-8 sm:px-10 py-5 sm:py-6 rounded-xl border-2 border-yellow-400/50 text-white bg-gradient-to-r from-yellow-500/20 via-orange-500/20 to-red-500/20 hover:from-yellow-500/30 hover:via-orange-500/30 hover:to-red-500/30 hover:border-yellow-300 transition-all duration-300 backdrop-blur-sm group shadow-lg hover:shadow-yellow-500/20"
               >
-                <Download className="mr-2 w-5 h-5 transform group-hover:scale-110 transition-transform duration-300" />
+                <Download className="mr-2 w-4 h-4 sm:w-5 sm:h-5 transform group-hover:scale-110 transition-transform duration-300" />
                 Download App
               </Button>
             </div>
 
             {/* Category Slider */}
-            <div className="mt-16 -mx-4 sm:-mx-6 lg:-mx-8 overflow-hidden relative group">
+            <div className="mt-8 sm:mt-12 md:mt-16 -mx-4 sm:-mx-6 lg:-mx-8 overflow-hidden relative group">
               {/* Gradient Overlays for Slider */}
-              <div className="absolute left-0 top-0 bottom-0 w-32 bg-gradient-to-r from-orange-900 to-transparent z-10"></div>
-              <div className="absolute right-0 top-0 bottom-0 w-32 bg-gradient-to-l from-orange-900 to-transparent z-10"></div>
+              <div className="absolute left-0 top-0 bottom-0 w-16 sm:w-24 md:w-32 bg-gradient-to-r from-orange-900 to-transparent z-10"></div>
+              <div className="absolute right-0 top-0 bottom-0 w-16 sm:w-24 md:w-32 bg-gradient-to-l from-orange-900 to-transparent z-10"></div>
               
               <div className="flex animate-scroll-slow hover:pause">
                 {[
@@ -417,7 +464,7 @@ export default function HomePage() {
                 ].map((category) => (
                   <div
                     key={`first-${category.id}`}
-                    className="flex-shrink-0 w-72 p-8 mx-2 relative overflow-hidden bg-orange-800/60 backdrop-blur-md rounded-2xl border-2 border-transparent hover:border-yellow-400 transition-all duration-300 hover:scale-[0.98] cursor-pointer group hover:bg-orange-800/80"
+                    className="flex-shrink-0 w-56 sm:w-64 md:w-72 p-6 sm:p-8 mx-2 relative overflow-hidden bg-orange-800/60 backdrop-blur-md rounded-xl sm:rounded-2xl border-2 border-transparent hover:border-yellow-400 transition-all duration-300 hover:scale-[0.98] cursor-pointer group hover:bg-orange-800/80"
                   >
                     <div className="absolute inset-0 z-0">
                       <Image
@@ -496,7 +543,7 @@ export default function HomePage() {
                 ].map((category) => (
                   <div
                     key={`second-${category.id}`}
-                    className="flex-shrink-0 w-72 p-8 mx-2 relative overflow-hidden bg-orange-800/60 backdrop-blur-md rounded-2xl border-2 border-transparent hover:border-yellow-400 transition-all duration-300 hover:scale-[0.98] cursor-pointer group hover:bg-orange-800/80"
+                    className="flex-shrink-0 w-56 sm:w-64 md:w-72 p-6 sm:p-8 mx-2 relative overflow-hidden bg-orange-800/60 backdrop-blur-md rounded-xl sm:rounded-2xl border-2 border-transparent hover:border-yellow-400 transition-all duration-300 hover:scale-[0.98] cursor-pointer group hover:bg-orange-800/80"
                   >
                     <div className="absolute inset-0 z-0">
                       <Image
@@ -521,25 +568,25 @@ export default function HomePage() {
       </section>
 
       {/* Features Section */}
-      <section className="py-16 bg-gradient-to-br from-amber-50 via-orange-50 to-red-50 relative">
+      <section className="py-12 sm:py-16 bg-gradient-to-br from-amber-50 via-orange-50 to-red-50 relative">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="text-center mb-12">
+          <div className="text-center mb-8 sm:mb-12">
             <Badge
               variant="secondary"
-              className="mb-4 px-4 py-2 bg-gradient-to-r from-yellow-500/20 to-orange-500/20 text-orange-700 border border-orange-200/50 backdrop-blur-sm"
+              className="mb-3 sm:mb-4 px-3 sm:px-4 py-1.5 sm:py-2 bg-gradient-to-r from-yellow-500/20 to-orange-500/20 text-orange-700 border border-orange-200/50 backdrop-blur-sm text-sm sm:text-base"
             >
               ✨ Everything You Need
             </Badge>
-            <h2 className="text-4xl md:text-6xl font-bold text-gray-900 mb-6">
+            <h2 className="text-3xl sm:text-4xl md:text-5xl lg:text-6xl font-bold text-gray-900 mb-4 sm:mb-6 px-2">
               Explore <span className="text-transparent bg-clip-text bg-gradient-to-r from-orange-500 to-red-500">Africa</span> Like Never Before
             </h2>
-            <p className="text-xl text-gray-600 max-w-2xl mx-auto">
+            <p className="text-base sm:text-lg md:text-xl text-gray-600 max-w-2xl mx-auto px-4">
               Discover, connect, and experience the rich culture and vibrant lifestyle across the continent with our
               comprehensive platform.
             </p>
           </div>
 
-          <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
+          <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-6">
             {features.map((feature, index) => (
               <Card
                 key={index}
@@ -551,10 +598,10 @@ export default function HomePage() {
                     <feature.icon className={`w-8 h-8 ${feature.iconColor} transition-colors duration-300`} />
                   </div>
                   <h3 className="text-2xl font-bold mb-3 text-gray-900 text-center group-hover:text-orange-500 transition-colors duration-300">{feature.title}</h3>
-                  <p className="text-gray-600 text-center mb-6 leading-relaxed">{feature.description}</p>
+                  <p className="text-gray-600 text-center mb-6 leading-relaxed text-base">{feature.description}</p>
                   <ul className="space-y-3">
                     {feature.features.map((item, i) => (
-                      <li key={i} className="flex items-center text-sm text-gray-500 group-hover:text-orange-600 transition-colors duration-300">
+                      <li key={i} className="flex items-center text-base text-gray-500 group-hover:text-orange-600 transition-colors duration-300">
                         <div className="w-1.5 h-1.5 bg-orange-500 rounded-full mr-3"></div>
                         {item}
                       </li>
@@ -568,8 +615,8 @@ export default function HomePage() {
       </section>
 
       {/* Popular Destinations */}
-      <section className="py-16 bg-gradient-to-br from-amber-50 via-orange-50 to-red-50">
-        <div className="mb-12 px-4 sm:px-6 lg:px-8 max-w-7xl mx-auto">
+      <section className="py-12 sm:py-16 bg-gradient-to-br from-amber-50 via-orange-50 to-red-50">
+        <div className="mb-8 sm:mb-12 px-4 sm:px-6 lg:px-8 max-w-7xl mx-auto">
           <div className="text-center">
             <Badge
               variant="secondary"
@@ -577,10 +624,10 @@ export default function HomePage() {
             >
               🌟 Popular Destinations
             </Badge>
-            <h2 className="text-4xl md:text-5xl font-bold text-gray-900 mb-4">
+            <h2 className="text-3xl sm:text-4xl md:text-5xl font-bold text-gray-900 mb-3 sm:mb-4 px-2">
               Discover <span className="text-transparent bg-clip-text bg-gradient-to-r from-orange-500 to-red-500">Amazing</span> Places
             </h2>
-            <p className="text-lg text-gray-600 max-w-2xl mx-auto leading-relaxed">
+            <p className="text-base sm:text-lg text-gray-600 max-w-2xl mx-auto leading-relaxed px-4">
               Explore the most loved spots across Africa, curated by our community of explorers
             </p>
           </div>
@@ -589,26 +636,26 @@ export default function HomePage() {
         {/* Full-width Destinations Slider */}
         <div className="relative overflow-hidden w-full">
           {/* Gradient Overlays - more subtle */}
-          <div className="absolute left-0 top-0 bottom-0 w-24 bg-gradient-to-r from-amber-50 to-transparent z-10 opacity-30" />
-          <div className="absolute right-0 top-0 bottom-0 w-24 bg-gradient-to-l from-amber-50 to-transparent z-10 opacity-30" />
+          <div className="absolute left-0 top-0 bottom-0 w-12 sm:w-16 md:w-24 bg-gradient-to-r from-amber-50 to-transparent z-10 opacity-30" />
+          <div className="absolute right-0 top-0 bottom-0 w-12 sm:w-16 md:w-24 bg-gradient-to-l from-amber-50 to-transparent z-10 opacity-30" />
           
-          <div className="flex gap-6 animate-scroll-slow hover:pause px-4">
+          <div className="flex gap-4 sm:gap-6 animate-scroll-slow hover:pause px-4">
             {isLoading ? (
               // Loading skeleton
               Array.from({ length: 4 }).map((_, index) => (
                 <Card
                   key={index}
-                  className="flex-shrink-0 w-[400px] border-2 border-transparent shadow-md"
+                  className="flex-shrink-0 w-[280px] sm:w-[320px] md:w-[360px] lg:w-[400px] border-2 border-transparent shadow-md"
                 >
                   <CardContent className="p-0">
                     <div className="relative overflow-hidden">
-                      <div className="w-full h-[400px] bg-gray-200 animate-pulse" />
+                      <div className="w-full h-[280px] sm:h-[320px] md:h-[360px] lg:h-[400px] bg-gray-200 animate-pulse" />
                     </div>
                   </CardContent>
                 </Card>
               ))
             ) : popularDestinations.length === 0 ? (
-              <div className="w-full text-center py-12 text-gray-500">
+              <div className="w-full text-center py-12 text-gray-500 px-4">
                 <p>No destinations available yet. Check back soon!</p>
               </div>
             ) : (
@@ -616,7 +663,7 @@ export default function HomePage() {
               [...popularDestinations, ...popularDestinations].map((destination, index) => (
                 <Card
                   key={index}
-                  className="flex-shrink-0 w-[400px] border-2 border-transparent shadow-md hover:shadow-lg hover:border-amber-400/50 transition-all duration-500 cursor-pointer group overflow-hidden transform hover:-translate-y-1"
+                  className="flex-shrink-0 w-[280px] sm:w-[320px] md:w-[360px] lg:w-[400px] border-2 border-transparent shadow-md hover:shadow-lg hover:border-amber-400/50 transition-all duration-500 cursor-pointer group overflow-hidden transform hover:-translate-y-1"
                 >
                   <CardContent className="p-0">
                     <div className="relative overflow-hidden">
@@ -625,7 +672,7 @@ export default function HomePage() {
                         alt={destination.name}
                         width={400}
                         height={300}
-                        className="w-full h-[400px] object-cover group-hover:scale-110 transition-transform duration-700"
+                        className="w-full h-[280px] sm:h-[320px] md:h-[360px] lg:h-[400px] object-cover group-hover:scale-110 transition-transform duration-700"
                       />
                       <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/40 to-transparent opacity-80 group-hover:opacity-90 transition-opacity duration-300" />
                       <div className="absolute top-4 right-4">
@@ -634,20 +681,20 @@ export default function HomePage() {
                           {destination.rating}
                         </Badge>
                       </div>
-                      <div className="absolute bottom-0 left-0 right-0 p-6 transform translate-y-2 group-hover:translate-y-0 transition-transform duration-300">
-                        <h3 className="text-2xl font-bold text-white mb-2 group-hover:text-yellow-300 transition-colors duration-300">
+                      <div className="absolute bottom-0 left-0 right-0 p-4 sm:p-6 transform translate-y-2 group-hover:translate-y-0 transition-transform duration-300">
+                        <h3 className="text-xl sm:text-2xl font-bold text-white mb-1 sm:mb-2 group-hover:text-yellow-300 transition-colors duration-300">
                           {destination.name}
                         </h3>
-                        <p className="text-base text-orange-200 font-medium mb-2">{destination.country}</p>
-                        <p className="text-sm text-white/90 mb-3">{destination.spots}</p>
-                        <div className="flex items-center space-x-3">
-                          <Badge className="bg-white/20 backdrop-blur-sm text-white border-0 px-3 py-1.5 text-sm">
+                        <p className="text-sm sm:text-base text-orange-200 font-medium mb-1 sm:mb-2">{destination.country}</p>
+                        <p className="text-xs sm:text-sm text-white/90 mb-2 sm:mb-3">{destination.spots}</p>
+                        <div className="flex flex-col sm:flex-row items-start sm:items-center gap-2 sm:gap-3 sm:space-x-3">
+                          <Badge className="bg-white/20 backdrop-blur-sm text-white border-0 px-2 sm:px-3 py-1 sm:py-1.5 text-xs sm:text-sm">
                             {destination.highlight}
                           </Badge>
-                          <Link href={`/discover?location=${destination.id}`}>
-                            <Button size="sm" variant="secondary" className="bg-white/20 backdrop-blur-sm hover:bg-white/30 text-white px-4">
+                          <Link href={`/discover?location=${destination.id}`} className="w-full sm:w-auto">
+                            <Button size="sm" variant="secondary" className="w-full sm:w-auto bg-white/20 backdrop-blur-sm hover:bg-white/30 text-white px-3 sm:px-4 text-xs sm:text-sm">
                               Explore
-                              <ArrowRight className="w-4 h-4 ml-1.5" />
+                              <ArrowRight className="w-3 h-3 sm:w-4 sm:h-4 ml-1.5" />
                             </Button>
                           </Link>
                         </div>

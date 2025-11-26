@@ -10,6 +10,7 @@ import { Input } from "@/components/ui/input"
 import { Badge } from "@/components/ui/badge"
 import { useAuth } from "@/hooks/use-auth"
 import { api } from "@/lib/api"
+import { DashboardNav } from "@/components/dashboard-nav"
 
 type ProfileFormState = {
   name: string
@@ -158,26 +159,7 @@ export default function BusinessProfilePage() {
 
   return (
     <div className="min-h-screen bg-gray-50">
-      <header className="bg-white shadow-sm border-b">
-        <div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex h-16 items-center justify-between">
-            <div className="flex items-center space-x-2">
-              <div className="w-8 h-8 bg-gradient-to-r from-orange-500 to-red-500 rounded-lg flex items-center justify-center">
-                <MapPin className="w-5 h-5 text-white" />
-              </div>
-              <span className="text-2xl font-bold text-gray-900">Business Profile</span>
-            </div>
-            <div className="flex items-center space-x-3">
-              <Button variant="outline" onClick={() => router.push("/business/dashboard")}>
-                Dashboard
-              </Button>
-              <Button variant="outline" onClick={() => router.push("/business/profile")}>
-                Profile
-              </Button>
-            </div>
-          </div>
-        </div>
-      </header>
+      <DashboardNav variant="business" />
 
       <main className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-8">
         {(error || successMessage) && (

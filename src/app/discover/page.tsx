@@ -26,7 +26,7 @@ import Image from "next/image"
 
 import { api } from "@/lib/api"
 import { useAuth } from "@/hooks/use-auth"
-import { LogoutButton } from "@/components/auth/logout-button"
+import { DashboardNav } from "@/components/dashboard-nav"
 import { PlaceActions } from "@/components/place-actions"
 
 type ApiCategory = {
@@ -261,71 +261,7 @@ function DiscoverContent() {
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-amber-50 via-orange-50 to-red-50">
-      {/* Header */}
-      <header className="bg-white/95 backdrop-blur-sm shadow-sm border-b sticky top-0 z-50">
-        <div className=" mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex justify-between items-center h-16">
-            <Link href="/" className="flex items-center space-x-3">
-              <div className="w-8 h-8 bg-gradient-to-br from-amber-500 via-orange-500 to-red-500 rounded-xl flex items-center justify-center">
-                <MapPin className="w-5 h-5 text-white" />
-              </div>
-              <div>
-                <span className="text-xl font-bold bg-gradient-to-r from-orange-600 to-red-600 bg-clip-text text-transparent">
-                  Corners
-                </span>
-              </div>
-            </Link>
-            <nav className="hidden md:flex space-x-8">
-              <Link href="/discover" className="text-orange-600 font-medium">
-                Discover
-              </Link>
-              <Link href="/profile" className="text-gray-700 hover:text-orange-600 transition-colors">
-                Profile
-              </Link>
-              <Link href="/saved" className="text-gray-700 hover:text-orange-600 transition-colors">
-                Saved
-              </Link>
-              <Link href="/events" className="text-gray-700 hover:text-orange-600 transition-colors">
-                Events
-              </Link>
-            </nav>
-            <div className="flex items-center space-x-4">
-              {user ? (
-                <>
-                  <Button variant="ghost" size="sm" className="hover:bg-orange-50" asChild>
-                    <Link href="/saved">
-                      <Heart className="w-4 h-4 mr-2" />
-                      Saved
-                    </Link>
-                  </Button>
-                  <Link
-                    href="/profile"
-                    className="w-9 h-9 bg-gradient-to-r from-orange-500 to-red-500 rounded-full flex items-center justify-center text-white font-semibold"
-                  >
-                    {user.name?.charAt(0)?.toUpperCase() ?? user.email.charAt(0).toUpperCase()}
-                  </Link>
-                  <LogoutButton variant="ghost" size="sm" className="hover:bg-orange-50">
-                    Log out
-                  </LogoutButton>
-                </>
-              ) : (
-                <>
-                  <Button variant="ghost" size="sm" className="hover:bg-orange-50" asChild>
-                    <Link href="/login">Sign in</Link>
-                  </Button>
-                  <Button
-                    size="sm"
-                    className="bg-gradient-to-r from-orange-500 to-red-500 hover:from-orange-600 hover:to-red-600 text-white"
-                    asChild
-                  >
-                    <Link href="/register">Join Corners</Link>
-                  </Button>
-                </>
-              )}
-            </div>
-          </div>
-        </div>
-      </header>
+      <DashboardNav variant="explorer" />
 
       <div className=" mx-auto px-4 sm:px-6 lg:px-8 py-8">
         {/* Hero Search */}
@@ -612,9 +548,7 @@ function DiscoverContent() {
                         View Details
                       </Button>
                     </Link>
-                    <Button variant="outline" className="px-4 rounded-xl border-orange-200 hover:bg-orange-50">
-                      <Heart className="w-4 h-4" />
-                    </Button>
+                
                   </div>
                 </div>
               </CardContent>
