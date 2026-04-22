@@ -42,6 +42,7 @@ import { useRouter } from "next/navigation"
 import { MessageModal } from "@/components/messaging/message-modal"
 import { ReservationModal } from "@/components/reservations/reservation-modal"
 import { PlaceActions } from "@/components/place-actions"
+import { SiteHeader } from "@/components/site-header"
 
 const amenityIconMap: Record<string, React.ComponentType<{ className?: string }>> = {
   "free wifi": Wifi,
@@ -224,26 +225,12 @@ export default function PlaceDetailClient({ place, relatedPlaces = [], reviews =
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-amber-50 via-orange-50 to-red-50">
-      <header className="bg-white/95 backdrop-blur-sm shadow-sm border-b sticky top-0 z-50">
-        <div className="mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex justify-between items-center h-16">
-            <Link href="/discover" className="flex items-center space-x-3">
-              <div className="w-8 h-8 bg-gradient-to-br from-amber-500 via-orange-500 to-red-500 rounded-xl flex items-center justify-center">
-                <MapPin className="w-5 h-5 text-white" />
-              </div>
-              <span className="text-xl font-bold bg-gradient-to-r from-orange-600 to-red-600 bg-clip-text text-transparent">
-                Corners
-              </span>
-            </Link>
-            <div className="flex items-center space-x-4">
-              <PlaceActions placeId={place.id} showFollow={user?.role === "user"} />
-              <div className="w-8 h-8 bg-gradient-to-r from-orange-500 to-red-500 rounded-full flex items-center justify-center text-white font-semibold">
-                {user?.name?.charAt(0)?.toUpperCase() || user?.email?.charAt(0)?.toUpperCase() || "U"}
-              </div>
-            </div>
-          </div>
+      <SiteHeader variant="explorer" />
+      <div className="sticky top-16 z-40 border-b border-orange-800/20 bg-[#C51A00]/97 backdrop-blur-md shadow-sm">
+        <div className="mx-auto flex max-w-7xl items-center justify-end gap-3 px-4 py-2.5 sm:px-6 lg:px-8">
+          <PlaceActions placeId={place.id} showFollow={user?.role === "user"} />
         </div>
-      </header>
+      </div>
 
       <div className="mx-auto px-4 sm:px-6 lg:px-8 py-8">
         <div className="mb-8">
@@ -313,7 +300,7 @@ export default function PlaceDetailClient({ place, relatedPlaces = [], reviews =
                   <div>
                     <h1 className="text-4xl font-bold text-gray-900 mb-2">{place.name}</h1>
                     {place.locationLabel && (
-                      <div className="flex items-center text-gray-600 mb-4">
+                      <div className="flex items-center text-gray-600 mb-4 text-base">
                         <MapPin className="w-5 h-5 mr-2" />
                         {place.locationLabel}
                       </div>
@@ -321,13 +308,13 @@ export default function PlaceDetailClient({ place, relatedPlaces = [], reviews =
                     <div className="flex items-center gap-4 flex-wrap">
                       <div className="flex items-center">
                         <Star className="w-6 h-6 text-yellow-400 fill-current" />
-                        <span className="text-2xl font-bold ml-2">{placeData.rating.toFixed(1)}</span>
+                        <span className="text-xl font-bold ml-2">{placeData.rating.toFixed(1)}</span>
                         <span className="text-gray-600 ml-2">({placeData.reviews} reviews)</span>
                       </div>
-                      <Badge variant="outline" className="border-orange-200 text-orange-700 text-lg px-3 py-1">
+                      <Badge variant="outline" className="border-orange-200 text-orange-700 text-base px-3 py-1">
                         {place.categoryName}
                       </Badge>
-                      <div className="flex items-center text-xl font-bold text-gray-900">
+                      <div className="flex items-center text-base font-bold text-gray-900">
                         <DollarSign className="w-5 h-5" />
                         <span>
                           {placeData.priceRangeMin !== undefined && placeData.priceRangeMax !== undefined
@@ -339,7 +326,7 @@ export default function PlaceDetailClient({ place, relatedPlaces = [], reviews =
                   </div>
                 </div>
 
-                <p className="text-gray-700 text-lg leading-relaxed mb-6">{place.description}</p>
+                <p className="text-gray-700 text-base leading-relaxed mb-6">{place.description}</p>
 
                 <div className="flex flex-wrap gap-2 mb-6">
                   {highlights.map((tag) => (

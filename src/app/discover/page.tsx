@@ -4,14 +4,10 @@ import { Suspense, useEffect, useMemo, useState } from "react"
 import { useSearchParams } from "next/navigation"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
-import { Input } from "@/components/ui/input"
 import { Badge } from "@/components/ui/badge"
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { Slider } from "@/components/ui/slider"
 import {
   MapPin,
   Star,
-  Search,
   Heart,
   Share2,
   Clock,
@@ -19,15 +15,20 @@ import {
   Map as MapIcon,
   Grid,
   List,
-  SlidersHorizontal,
 } from "lucide-react"
 import Link from "next/link"
 import Image from "next/image"
 
 import { api } from "@/lib/api"
+import { buildPlaceHaystack, haystackMatchesTokens, normalizeSearchTokens } from "@/lib/search-utils"
 import { useAuth } from "@/hooks/use-auth"
 import { DashboardNav } from "@/components/dashboard-nav"
 import { PlaceActions } from "@/components/place-actions"
+import { useLocationExplore } from "@/providers/location-provider"
+import { LandingSearch } from "@/components/landing-search"
+import { PlacesGoogleMap } from "@/components/places-google-map"
+import { haversineKm } from "@/lib/geo"
+import { getCoordsForPlace } from "@/lib/place-coords"
 
 type ApiCategory = {
   id: string
@@ -66,12 +67,11 @@ type ApiPlace = {
 
 function DiscoverContent() {
   const { user } = useAuth()
+  const { searchCenter, radiusKm } = useLocationExplore()
   const searchParams = useSearchParams()
-  const [searchQuery, setSearchQuery] = useState("")
-  const [selectedCategory, setSelectedCategory] = useState("all")
+  const [selectedCategory, setSelectedCategory] = useState(() => searchParams.get("category") || "all")
   const [selectedLocation, setSelectedLocation] = useState(searchParams.get("location") || "all")
   const [viewMode, setViewMode] = useState("grid")
-  const [showFilters, setShowFilters] = useState(false)
   const [priceRange, setPriceRange] = useState<[number, number]>([1, 4])
   const [minRating, setMinRating] = useState<string>("any")
   const [maxDistance, setMaxDistance] = useState<string>("any")
@@ -80,6 +80,18 @@ function DiscoverContent() {
   const [places, setPlaces] = useState<ApiPlace[]>([])
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const [showMapView, setShowMapView] = useState(false)
+
+  const qParam = searchParams.get("q") ?? ""
+  const categoryParam = searchParams.get("category") || "all"
+  const locationParam = searchParams.get("location") || "all"
+
+  useEffect(() => {
+    setSelectedCategory(categoryParam)
+    setSelectedLocation(locationParam)
+  }, [qParam, categoryParam, locationParam])
+
+  const searchQuery = qParam
 
   // Price level to range mapping
   const priceLevelToRange = {
@@ -236,27 +248,36 @@ function DiscoverContent() {
         }
       }
       
-      // Search query filter
-      if (searchQuery) {
-        const query = searchQuery.toLowerCase()
-        const haystack = [
-          place.name,
-          place.description,
-          place.location?.name,
-          place.category?.name,
-          ...(place.tags ?? []),
-        ]
-          .filter(Boolean)
-          .join(" ")
-          .toLowerCase()
-        if (!haystack.includes(query)) {
-          return false
+      // Search query filter — each word must match somewhere (name, description, tags, location, category, slugs)
+      if (searchQuery.trim()) {
+        const tokens = normalizeSearchTokens(searchQuery)
+        if (tokens.length > 0) {
+          const haystack = buildPlaceHaystack(place)
+          if (!haystackMatchesTokens(haystack, tokens)) {
+            return false
+          }
         }
       }
-      
+
+      if (searchCenter) {
+        const d = haversineKm(searchCenter, getCoordsForPlace(place))
+        if (d > radiusKm) return false
+      }
+
       return true
     })
-  }, [places, selectedCategory, selectedLocation, priceRange, minRating, maxDistance, searchQuery, priceLevelToRange])
+  }, [
+    places,
+    selectedCategory,
+    selectedLocation,
+    priceRange,
+    minRating,
+    maxDistance,
+    searchQuery,
+    priceLevelToRange,
+    searchCenter,
+    radiusKm,
+  ])
 
 
   return (
@@ -265,98 +286,20 @@ function DiscoverContent() {
 
       <div className=" mx-auto px-4 sm:px-6 lg:px-8 py-8">
         {/* Hero Search */}
-        <div className="mb-8 bg-white rounded-2xl shadow-xl p-8">
+        <div id="discover-search" className="mb-8 scroll-mt-28 bg-white rounded-2xl shadow-xl p-8">
           <h1 className="text-4xl font-bold text-gray-900 mb-2">Discover Amazing Places </h1>
           <p className="text-gray-600 mb-8">Find authentic experiences across Africa</p>
 
-          <div className="flex flex-col lg:flex-row gap-4 mb-6">
-            <div className="flex-1 relative">
-              <Search className="absolute left-4 top-1/2 transform -translate-y-1/2 text-gray-400 w-5 h-5" />
-              <Input
-                placeholder="Search for restaurants, hotels, events, or experiences..."
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                className="pl-12 h-14 text-lg border-2 border-gray-200 focus:border-orange-400 rounded-xl"
-              />
-            </div>
-            <Select value={selectedLocation} onValueChange={setSelectedLocation}>
-              <SelectTrigger className="w-full lg:w-64 h-14 border-2 border-gray-200 rounded-xl">
-                <SelectValue placeholder="Select location" />
-              </SelectTrigger>
-              <SelectContent>
-                {locationOptions.map((location) => (
-                  <SelectItem key={location.id} value={location.id}>
-                    <div className="flex justify-between items-center w-full">
-                      <span>{location.name}</span>
-                      <Badge variant="secondary" className="ml-2">
-                        {location.count}
-                      </Badge>
-                    </div>
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-            <Button
-              className="h-14 px-8 bg-gradient-to-r from-amber-500 via-orange-500 to-red-500 hover:from-amber-600 hover:via-orange-600 hover:to-red-600 rounded-xl shadow-lg"
-              onClick={() => setShowFilters(!showFilters)}
-            >
-              <SlidersHorizontal className="w-5 h-5 mr-2" />
-              Filters
-            </Button>
+          <div className="mb-6">
+            <LandingSearch
+              places={places}
+              locations={locations}
+              categories={categories}
+              isLoading={isLoading}
+              initialQuery={searchQuery}
+              className="max-w-none px-0"
+            />
           </div>
-
-          {/* Advanced Filters */}
-          {showFilters && (
-            <div className="bg-gray-50 rounded-xl p-6 space-y-6">
-              <div className="grid md:grid-cols-3 gap-6">
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">Price Range</label>
-                  <Slider
-                    value={priceRange}
-                    onValueChange={(value) => setPriceRange([value[0] ?? 1, value[1] ?? value[0] ?? 4])}
-                    min={1}
-                    max={4}
-                    step={1}
-                    className="w-full"
-                  />
-                  <div className="flex justify-between text-sm text-gray-600 mt-2 font-medium">
-                    <span>{priceLevelToRange[priceRange[0] as keyof typeof priceLevelToRange]?.label || "$0 - $25"}</span>
-                    <span>{priceLevelToRange[priceRange[1] as keyof typeof priceLevelToRange]?.label || "$100+"}</span>
-                  </div>
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">Rating</label>
-                  <Select value={minRating} onValueChange={setMinRating}>
-                    <SelectTrigger>
-                      <SelectValue placeholder="Any rating" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="any">Any rating</SelectItem>
-                      <SelectItem value="4.5">4.5+ stars</SelectItem>
-                      <SelectItem value="4.0">4.0+ stars</SelectItem>
-                      <SelectItem value="3.5">3.5+ stars</SelectItem>
-                      <SelectItem value="3.0">3.0+ stars</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">Distance</label>
-                  <Select value={maxDistance} onValueChange={setMaxDistance}>
-                    <SelectTrigger>
-                      <SelectValue placeholder="Any distance" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="any">Any distance</SelectItem>
-                      <SelectItem value="1">Within 1 km</SelectItem>
-                      <SelectItem value="5">Within 5 km</SelectItem>
-                      <SelectItem value="10">Within 10 km</SelectItem>
-                      <SelectItem value="25">Within 25 km</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-              </div>
-            </div>
-          )}
 
           {/* Category Tabs */}
           <div className="flex flex-wrap gap-3 mt-6">
@@ -389,6 +332,11 @@ function DiscoverContent() {
               {selectedCategory !== "all" && `in ${categoryOptions.find((c) => c.id === selectedCategory)?.name ?? ""}`}
               {selectedLocation !== "all" &&
                 ` near ${locationOptions.find((l) => l.id === selectedLocation)?.name ?? ""}`}
+              {searchCenter && (
+                <span className="mt-1 block text-gray-600 sm:mt-0 sm:inline sm:before:mr-1 sm:before:content-['·']">
+                  Within {radiusKm} km of your area
+                </span>
+              )}
             </p>
           </div>
           <div className="flex items-center space-x-2">
@@ -408,9 +356,14 @@ function DiscoverContent() {
             >
               <List className="w-4 h-4" />
             </Button>
-            <Button variant="outline" size="sm">
-              <MapIcon className="w-4 h-4 mr-2" />
-              Map View
+            <Button
+              variant={showMapView ? "default" : "outline"}
+              size="sm"
+              className={showMapView ? "bg-orange-500 hover:bg-orange-600" : ""}
+              onClick={() => setShowMapView((v) => !v)}
+            >
+              <MapIcon className="mr-2 h-4 w-4" />
+              {showMapView ? "Hide map" : "Map view"}
             </Button>
           </div>
         </div>
@@ -419,6 +372,23 @@ function DiscoverContent() {
         {error && (
           <div className="mb-6 rounded-xl border border-red-100 bg-red-50 px-4 py-3 text-red-600">
             {error}
+          </div>
+        )}
+
+        {showMapView && !isLoading && filteredPlaces.length > 0 && (
+          <div className="mb-8">
+            <PlacesGoogleMap
+              places={filteredPlaces.slice(0, 150)}
+              mapCenter={searchCenter}
+              zoom={searchCenter ? 10 : 4}
+              minHeight={440}
+            />
+          </div>
+        )}
+
+        {showMapView && !isLoading && filteredPlaces.length === 0 && (
+          <div className="mb-8 rounded-2xl border border-dashed border-orange-200 bg-white p-8 text-center text-gray-600">
+            No places match your filters for the map. Clear filters or widen your area radius.
           </div>
         )}
 
@@ -445,9 +415,7 @@ function DiscoverContent() {
             <p className="text-gray-600 mb-6">
               Try adjusting your filters or search terms to discover more experiences across the continent.
             </p>
-            <Button variant="outline" onClick={() => setShowFilters(true)}>
-              Adjust Filters
-            </Button>
+            <p className="text-sm text-orange-700">Try a different search, category, or location above.</p>
           </div>
         ) : (
         <div className={`grid gap-6 ${viewMode === "grid" ? "md:grid-cols-2 lg:grid-cols-3" : "grid-cols-1"}`}>

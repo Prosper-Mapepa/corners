@@ -4,8 +4,10 @@ import { Fragment, useEffect, useState, useMemo } from "react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
-import { Input } from "@/components/ui/input"
-import { MapPin, Users, Utensils, Hotel, Music, Camera, Shield, Star, ArrowRight, Play, Download, Sparkles, Menu, X } from "lucide-react"
+import { MapPin, Users, Utensils, Hotel, Music, Camera, Shield, Star, ArrowRight, Play, Download, Sparkles } from "lucide-react"
+import { LandingSearch } from "@/components/landing-search"
+import { AppComingSoonModal } from "@/components/app-coming-soon-modal"
+import { SiteHeader } from "@/components/site-header"
 import { AfricaIcon } from "@/components/AfricaIcon"
 import Link from "next/link"
 import Image from "next/image"
@@ -25,6 +27,10 @@ import Shirt from "@/assets/shirt.png"
 import AfricanDrum from "@/assets/african-drum.png"
 import Djembe from "@/assets/djembe.png"
 import { api } from "@/lib/api"
+import { useLocationExplore } from "@/providers/location-provider"
+import { PlacesGoogleMap } from "@/components/places-google-map"
+import { haversineKm } from "@/lib/geo"
+import { getCoordsForPlace } from "@/lib/place-coords"
 
 type ApiLocation = {
   id: string
@@ -34,13 +40,24 @@ type ApiLocation = {
   country?: string | null
 }
 
+type ApiCategory = {
+  id: string
+  name: string
+  slug: string
+  icon?: string | null
+}
+
 type ApiPlace = {
   id: string
   name: string
+  description?: string | null
+  category?: ApiCategory
   location: ApiLocation
   rating: number
   reviews: number
   imageUrl?: string | null
+  tags?: string[]
+  featured?: boolean
   status: string
 }
 
@@ -52,20 +69,24 @@ const locationImageMap: Record<string, any> = {
 }
 
 export default function HomePage() {
+  const { searchCenter, radiusKm } = useLocationExplore()
   const [locations, setLocations] = useState<ApiLocation[]>([])
+  const [categories, setCategories] = useState<ApiCategory[]>([])
   const [places, setPlaces] = useState<ApiPlace[]>([])
   const [isLoading, setIsLoading] = useState(true)
-  const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
+  const [showAppComingSoon, setShowAppComingSoon] = useState(false)
 
   useEffect(() => {
     const fetchData = async () => {
       try {
         setIsLoading(true)
-        const [locationsResponse, placesResponse] = await Promise.all([
+        const [locationsResponse, categoriesResponse, placesResponse] = await Promise.all([
           api.get<ApiLocation[]>("/locations"),
+          api.get<ApiCategory[]>("/categories"),
           api.get<ApiPlace[]>("/places?status=approved"),
         ])
         setLocations(locationsResponse)
+        setCategories(categoriesResponse)
         setPlaces(
           placesResponse.map((place) => ({
             ...place,
@@ -82,6 +103,32 @@ export default function HomePage() {
     fetchData()
   }, [])
 
+  /** Listings that match location + radius (all pages use this when an area is set) */
+  const placesWithinPreferences = useMemo(() => {
+    if (!searchCenter) return places
+    return places.filter((p) => haversineKm(searchCenter, getCoordsForPlace(p)) <= radiusKm)
+  }, [places, searchCenter, radiusKm])
+
+  const placesForMap = useMemo(() => placesWithinPreferences.slice(0, 120), [placesWithinPreferences])
+
+  const locationsForLandingSearch = useMemo(() => {
+    if (!searchCenter) return locations
+    const ids = new Set(
+      placesWithinPreferences.map((p) => p.location?.id).filter((id): id is string => Boolean(id)),
+    )
+    if (ids.size === 0) return locations
+    return locations.filter((l) => ids.has(l.id))
+  }, [locations, placesWithinPreferences, searchCenter])
+
+  const categoriesForLandingSearch = useMemo(() => {
+    if (!searchCenter) return categories
+    const ids = new Set(
+      placesWithinPreferences.map((p) => p.category?.id).filter((id): id is string => Boolean(id)),
+    )
+    if (ids.size === 0) return categories
+    return categories.filter((c) => ids.has(c.id))
+  }, [categories, placesWithinPreferences, searchCenter])
+
   const popularDestinations = useMemo(() => {
     // Group places by location and calculate stats
     const locationStats = new Map<string, {
@@ -92,7 +139,7 @@ export default function HomePage() {
       totalReviews: number
     }>()
 
-    places.forEach((place) => {
+    placesWithinPreferences.forEach((place) => {
       const locationId = place.location?.id
       if (!locationId) return
 
@@ -120,11 +167,10 @@ export default function HomePage() {
       }
     })
 
-    // Convert to array, sort by total spots, and take top locations
-    return Array.from(locationStats.values())
+    const groupedDestinations = Array.from(locationStats.values())
       .filter((stats) => stats.totalSpots > 0)
       .sort((a, b) => b.totalSpots - a.totalSpots)
-      .slice(0, 8)
+      .slice(0, searchCenter ? 12 : 8)
       .map((stats) => {
         const locationSlug = stats.location.slug.toLowerCase()
         const image = locationImageMap[locationSlug] || locationImageMap[locationSlug.replace(/\s+/g, "-")] || Lagos
@@ -146,9 +192,28 @@ export default function HomePage() {
           image,
           rating: Number(stats.avgRating.toFixed(1)),
           highlight,
+          href: `/discover?location=${stats.location.id}`,
         }
       })
-  }, [places])
+
+    if (groupedDestinations.length >= 2 || placesWithinPreferences.length <= 1) {
+      return groupedDestinations
+    }
+
+    return placesWithinPreferences.slice(0, searchCenter ? 12 : 8).map((place) => ({
+      id: place.id,
+      name: place.name,
+      country: place.location?.name || place.location?.country || "",
+      spots: `${(place.reviews ?? 0).toLocaleString()} review${place.reviews === 1 ? "" : "s"}`,
+      image: place.imageUrl || Lagos,
+      rating: Number((place.rating || 0).toFixed(1)),
+      highlight: place.description?.trim() || place.category?.name || "Amazing experiences",
+      href: `/place/${place.id}`,
+    }))
+  }, [placesWithinPreferences, searchCenter])
+
+  const shouldAutoScrollDestinations = popularDestinations.length >= 3
+
   const features = [
     {
       icon: Utensils,
@@ -204,7 +269,18 @@ export default function HomePage() {
       iconColor: "text-orange-500 group-hover:text-orange-600",
       features: ["Verified businesses", "Secure payments", "24/7 support"],
     },
-  ];
+  ]
+
+  const heroCategories = [
+    { id: "restaurants", name: "Restaurants", icon: "🍽️", description: "Authentic local cuisine", image: Lagos },
+    { id: "hotels", name: "Hotels & Lodges", icon: "🏨", description: "Unique accommodations", image: Captown },
+    { id: "nightlife", name: "Nightlife", icon: "🌙", description: "Vibrant entertainment", image: Nairobi },
+    { id: "culture", name: "Cultural Sites", icon: "🎭", description: "Rich heritage experiences", image: Accra },
+    { id: "shopping", name: "Markets & Shopping", icon: "🛍️", description: "Local crafts & goods", image: Mask },
+    { id: "outdoor", name: "Outdoor Adventures", icon: "🌳", description: "Nature & wildlife", image: Globe },
+    { id: "wellness", name: "Wellness & Spa", icon: "🧘", description: "Relaxation & healing", image: Woman },
+    { id: "events", name: "Events & Festivals", icon: "🎉", description: "Cultural celebrations", image: Drums },
+  ]
 
   return (
     <main className="min-h-screen bg-gradient-to-br from-orange-900 via-red-800 to-yellow-800 relative overflow-hidden">
@@ -228,121 +304,10 @@ export default function HomePage() {
         </div>
       </div>
 
-      {/* Header */}
-      <header className="bg-[#C51A00] backdrop-blur-sm shadow-lg border-b border-orange-700/50 sticky top-0 z-50">
-        <div className="mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex justify-between items-center h-16">
-            <div className="flex items-center space-x-3">
-              <div className="w-8 h-8 sm:w-10 sm:h-10 flex items-center justify-center">
-                <Image src={Africaa} alt="Africa" width={40} height={40} className="inline-block" />
-              </div>
-              <div>
-                <span className="text-xl sm:text-2xl font-bold text-transparent bg-clip-text bg-gradient-to-r from-yellow-400 via-orange-300 to-yellow-400">
-                  Corners
-                </span>
-                <div className="text-xs text-orange-200 font-medium hidden sm:block">African Lifestyle</div>
-              </div>
-            </div>
-            <nav className="hidden md:flex space-x-8">
-              <Link
-                href="/discover"
-                className="text-orange-100 hover:text-yellow-300 transition-all duration-200 font-semibold"
-              >
-                Discover
-              </Link>
-              <Link
-                href="/businesses"
-                className="text-orange-100 hover:text-yellow-300 transition-all duration-200 font-semibold"
-              >
-                For Business
-              </Link>
-              <Link
-                href="/events"
-                className="text-orange-100 hover:text-yellow-300 transition-all duration-200 font-semibold"
-              >
-                Events
-              </Link>
-              <Link
-                href="/about"
-                className="text-orange-100 hover:text-yellow-300 transition-all duration-200 font-semibold"
-              >
-                About
-              </Link>
-            </nav>
-            <div className="hidden md:flex items-center space-x-4">
-              <Link href="/login">
-                <Button variant="ghost" className="text-orange-100 hover:text-yellow-300 hover:bg-orange-800/50">
-                  Sign In
-                </Button>
-              </Link>
-              <Link href="/register">
-                <Button className="bg-gradient-to-r from-amber-500 via-orange-500 to-red-500 hover:from-amber-600 hover:via-orange-600 hover:to-red-600 shadow-lg hover:shadow-xl transition-all duration-200">
-                  Get Started
-                </Button>
-              </Link>
-            </div>
-            <Button
-              variant="ghost"
-              size="icon"
-              className="md:hidden text-orange-100 hover:text-yellow-300 hover:bg-orange-800/50"
-              onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
-            >
-              {mobileMenuOpen ? <X className="w-6 h-6" /> : <Menu className="w-6 h-6" />}
-            </Button>
-          </div>
-          
-          {/* Mobile Menu */}
-          {mobileMenuOpen && (
-            <div className="md:hidden border-t border-orange-700/50 py-4">
-              <nav className="flex flex-col space-y-4">
-                <Link
-                  href="/discover"
-                  className="text-orange-100 hover:text-yellow-300 transition-all duration-200 font-semibold px-2"
-                  onClick={() => setMobileMenuOpen(false)}
-                >
-                  Discover
-                </Link>
-                <Link
-                  href="/businesses"
-                  className="text-orange-100 hover:text-yellow-300 transition-all duration-200 font-semibold px-2"
-                  onClick={() => setMobileMenuOpen(false)}
-                >
-                  For Business
-                </Link>
-                <Link
-                  href="/events"
-                  className="text-orange-100 hover:text-yellow-300 transition-all duration-200 font-semibold px-2"
-                  onClick={() => setMobileMenuOpen(false)}
-                >
-                  Events
-                </Link>
-                <Link
-                  href="/about"
-                  className="text-orange-100 hover:text-yellow-300 transition-all duration-200 font-semibold px-2"
-                  onClick={() => setMobileMenuOpen(false)}
-                >
-                  About
-                </Link>
-                <div className="flex flex-col space-y-2 pt-4 border-t border-orange-700/50">
-                  <Link href="/login" onClick={() => setMobileMenuOpen(false)}>
-                    <Button variant="ghost" className="w-full text-orange-100 hover:text-yellow-300 hover:bg-orange-800/50 justify-start">
-                      Sign In
-                    </Button>
-                  </Link>
-                  <Link href="/register" onClick={() => setMobileMenuOpen(false)}>
-                    <Button className="w-full bg-gradient-to-r from-amber-500 via-orange-500 to-red-500 hover:from-amber-600 hover:via-orange-600 hover:to-red-600">
-                      Get Started
-                    </Button>
-                  </Link>
-                </div>
-              </nav>
-            </div>
-          )}
-        </div>
-      </header>
+      <SiteHeader />
 
       {/* Hero Section */}
-      <section className="relative py-12 sm:py-16 md:py-24 px-4 sm:px-6 lg:px-8 overflow-hidden min-h-screen flex items-center">
+      <section className="relative flex min-h-screen items-center py-10 sm:py-16 md:py-24 px-3 sm:px-6 lg:px-8">
         <div className="absolute inset-0 w-full h-full">
           {/* Animated gradient backgrounds */}
           <div className="absolute inset-0 bg-gradient-radial from-amber-500 via-orange-600 to-red-700 animate-gradient-slow" />
@@ -358,22 +323,46 @@ export default function HomePage() {
         </div>
 
         {/* Content */}
-        <div className="max-w-7xl mx-auto relative w-full">
+        <div className="relative mx-auto w-full max-w-7xl">
           <div className="text-center">
-            <h1 className="text-4xl sm:text-5xl md:text-6xl lg:text-7xl font-bold mb-6 sm:mb-8 leading-tight px-2">
-              <div className="text-white animate-typing flex flex-col sm:flex-row items-center justify-center gap-2">
-                Your <span className="inline-flex text-transparent bg-clip-text bg-gradient-to-r from-yellow-400 via-orange-300 to-yellow-400 items-center gap-2">African <Image src={Africa} alt="Africa" width={40} height={40} className="w-8 h-8 sm:w-12 sm:h-12 md:w-14 md:h-14 lg:w-16 lg:h-16 inline-block" /></span>
-              </div>
-              <div className="block text-white mt-2 animate-typing-delayed text-center">
-                Lifestyle Companion
+            <h1 className="mb-5 w-full px-1 sm:mb-7 sm:px-4">
+              <div className="mx-auto flex w-full max-w-7xl justify-center px-0 sm:px-4">
+                <div className="flex w-full min-w-0 max-w-full justify-center overflow-x-clip overflow-y-visible">
+                  <span className="animate-typing-hero gap-x-1 font-bold leading-[1.08] tracking-tight text-[clamp(1.45rem,5.2vw+0.15rem,2rem)] drop-shadow-md sm:gap-x-2 sm:text-[clamp(1.8rem,4.8vw+0.45rem,4.9rem)] md:gap-x-2.5 lg:gap-x-3">
+                    <span className="text-white">Your</span>
+                    <span className="bg-gradient-to-r from-yellow-300 via-amber-200 to-yellow-300 bg-clip-text text-transparent">
+                      African
+                    </span>
+                  
+                    <span className="text-white">Lifestyle Companion</span>  <Image
+                      src={Africa}
+                      alt="Africa"
+                      width={112}
+                      height={112}
+                      sizes="(max-width: 640px) 36px, (max-width: 1024px) 56px, 72px"
+                      className="h-[0.84em] w-[0.84em] shrink-0 object-contain"
+                    />
+                  </span>
+                </div>
               </div>
             </h1>
 
-            <p className="text-base sm:text-lg md:text-xl lg:text-2xl text-orange-100 mb-8 sm:mb-12 max-w-4xl mx-auto leading-relaxed px-4">
-             Skip the tourist traps. Corners is your gateway to the best local experiences in Africa — From buzzing nightclubs to hidden gems, connect with local businesses, and explore vibrant culture, all from one app.
-            </p>
+            <div className="mx-auto mb-7 w-full max-w-5xl px-2 text-center sm:mb-10 sm:px-5 md:px-8">
+              <p className="text-pretty text-base font-light leading-relaxed tracking-normal text-white/95 drop-shadow-[0_1px_3px_rgba(0,0,0,0.18)] antialiased sm:text-lg md:text-xl md:leading-[1.7] lg:text-2xl">
+                Skip the tourist traps. Corners is your gateway to the best local experiences in Africa, from buzzing nightclubs to hidden gems, local businesses, and vibrant culture.
+              </p>
+            </div>
 
-            <div className="flex flex-col sm:flex-row gap-4 sm:gap-6 justify-center items-center mb-12 sm:mb-16 px-4">
+            <div className="mx-auto w-full max-w-4xl px-3 sm:px-6">
+              <LandingSearch
+                places={placesWithinPreferences}
+                locations={locationsForLandingSearch}
+                categories={categoriesForLandingSearch}
+                isLoading={isLoading}
+              />
+            </div>
+
+            <div className="mt-6 flex flex-col items-center justify-center gap-3 px-3 sm:mt-10 sm:flex-row sm:gap-6 sm:px-4 sm:mb-12 md:mb-14 lg:mb-16">
               <Link href="/discover" className="w-full sm:w-auto">
                 <Button
                   size="lg"
@@ -388,9 +377,11 @@ export default function HomePage() {
               </Link>
 
               <Button
+                type="button"
                 size="lg"
                 variant="outline"
                 className="w-full sm:w-auto text-base sm:text-lg px-8 sm:px-10 py-5 sm:py-6 rounded-xl border-2 border-yellow-400/50 text-white bg-gradient-to-r from-yellow-500/20 via-orange-500/20 to-red-500/20 hover:from-yellow-500/30 hover:via-orange-500/30 hover:to-red-500/30 hover:border-yellow-300 transition-all duration-300 backdrop-blur-sm group shadow-lg hover:shadow-yellow-500/20"
+                onClick={() => setShowAppComingSoon(true)}
               >
                 <Download className="mr-2 w-4 h-4 sm:w-5 sm:h-5 transform group-hover:scale-110 transition-transform duration-300" />
                 Download App
@@ -398,166 +389,36 @@ export default function HomePage() {
             </div>
 
             {/* Category Slider */}
-            <div className="mt-8 sm:mt-12 md:mt-16 -mx-4 sm:-mx-6 lg:-mx-8 overflow-hidden relative group">
-              {/* Gradient Overlays for Slider */}
-              <div className="absolute left-0 top-0 bottom-0 w-16 sm:w-24 md:w-32 bg-gradient-to-r from-orange-900 to-transparent z-10"></div>
-              <div className="absolute right-0 top-0 bottom-0 w-16 sm:w-24 md:w-32 bg-gradient-to-l from-orange-900 to-transparent z-10"></div>
-              
-              <div className="flex animate-scroll-slow hover:pause">
-                {[
-                  {
-                    id: "restaurants",
-                    name: "Restaurants",
-                    icon: "🍽️",
-                    description: "Authentic local cuisine",
-                    image: Lagos
-                  },
-                  {
-                    id: "hotels",
-                    name: "Hotels & Lodges",
-                    icon: "🏨",
-                    description: "Unique accommodations",
-                    image: Captown
-                  },
-                  {
-                    id: "nightlife",
-                    name: "Nightlife",
-                    icon: "🌙",
-                    description: "Vibrant entertainment",
-                    image: Nairobi
-                  },
-                  {
-                    id: "culture",
-                    name: "Cultural Sites",
-                    icon: "🎭",
-                    description: "Rich heritage experiences",
-                    image: Accra
-                  },
-                  {
-                    id: "shopping",
-                    name: "Markets & Shopping",
-                    icon: "🛍️",
-                    description: "Local crafts & goods",
-                    image: Mask
-                  },
-                  {
-                    id: "outdoor",
-                    name: "Outdoor Adventures",
-                    icon: "🌳",
-                    description: "Nature & wildlife",
-                    image: Globe
-                  },
-                  {
-                    id: "wellness",
-                    name: "Wellness & Spa",
-                    icon: "🧘",
-                    description: "Relaxation & healing",
-                    image: Woman
-                  },
-                  {
-                    id: "events",
-                    name: "Events & Festivals",
-                    icon: "🎉",
-                    description: "Cultural celebrations",
-                    image: Drums
-                  },
-                ].map((category) => (
+            <div className="relative -mx-3 mt-6 overflow-hidden sm:-mx-6 sm:mt-12 md:mt-14 lg:-mx-8">
+              <div className="pointer-events-none absolute inset-y-0 left-0 z-10 w-5 bg-gradient-to-r from-amber-200/25 to-transparent sm:w-7 md:w-10" />
+              <div className="pointer-events-none absolute inset-y-0 right-0 z-10 w-5 bg-gradient-to-l from-amber-200/25 to-transparent sm:w-7 md:w-10" />
+
+              <div className="flex animate-scroll-hero-categories gap-3 px-1 hover:pause sm:gap-4 md:gap-5 sm:px-2">
+                {[...heroCategories, ...heroCategories].map((category, idx) => (
                   <div
-                    key={`first-${category.id}`}
-                    className="flex-shrink-0 w-56 sm:w-64 md:w-72 p-6 sm:p-8 mx-2 relative overflow-hidden bg-orange-800/60 backdrop-blur-md rounded-xl sm:rounded-2xl border-2 border-transparent hover:border-yellow-400 transition-all duration-300 hover:scale-[0.98] cursor-pointer group hover:bg-orange-800/80"
+                    key={`${category.id}-${idx}`}
+                    className="group relative w-52 shrink-0 cursor-pointer overflow-hidden rounded-xl border-2 border-white/35 bg-black/20 p-5 shadow-lg shadow-orange-950/10 backdrop-blur-md transition-all duration-300 hover:scale-[0.99] hover:border-white/55 hover:bg-white/30 sm:w-60 sm:rounded-2xl sm:p-6 md:w-[17.5rem] min-h-[9.5rem] sm:min-h-[10.5rem]"
                   >
                     <div className="absolute inset-0 z-0">
                       <Image
                         src={category.image}
-                        alt={category.name}
+                        alt=""
                         fill
-                        className="object-cover opacity-20 group-hover:opacity-30 transition-opacity duration-300"
+                        className="object-cover opacity-[0.35] transition-opacity duration-300 group-hover:opacity-[0.48]"
+                        aria-hidden
                       />
-                      <div className="absolute inset-0 bg-gradient-to-b from-orange-800/80 to-orange-900/90" />
+                      <div className="absolute inset-0 bg-gradient-to-b from-orange-600/25 via-orange-700/35 to-orange-900/50" />
                     </div>
-                    <div className="text-center relative z-10">
-                      <div className="text-4xl mb-4 transform group-hover:scale-110 transition-transform duration-300">{category.icon}</div>
-                      <h4 className="text-white font-semibold mb-2 text-base group-hover:text-yellow-300 transition-colors duration-300">{category.name}</h4>
-                      <p className="text-orange-200 text-sm">{category.description}</p>
-                    </div>
-                  </div>
-                ))}
-                {/* Duplicate set for seamless loop */}
-                {[
-                  {
-                    id: "restaurants",
-                    name: "Restaurants",
-                    icon: "🍽️",
-                    description: "Authentic local cuisine",
-                    image: Lagos
-                  },
-                  {
-                    id: "hotels",
-                    name: "Hotels & Lodges",
-                    icon: "🏨",
-                    description: "Unique accommodations",
-                    image: Captown
-                  },
-                  {
-                    id: "nightlife",
-                    name: "Nightlife",
-                    icon: "🌙",
-                    description: "Vibrant entertainment",
-                    image: Nairobi
-                  },
-                  {
-                    id: "culture",
-                    name: "Cultural Sites",
-                    icon: "🎭",
-                    description: "Rich heritage experiences",
-                    image: Accra
-                  },
-                  {
-                    id: "shopping",
-                    name: "Markets & Shopping",
-                    icon: "🛍️",
-                    description: "Local crafts & goods",
-                    image: Mask
-                  },
-                  {
-                    id: "outdoor",
-                    name: "Outdoor Adventures",
-                    icon: "🌳",
-                    description: "Nature & wildlife",
-                    image: Globe
-                  },
-                  {
-                    id: "wellness",
-                    name: "Wellness & Spa",
-                    icon: "🧘",
-                    description: "Relaxation & healing",
-                    image: Woman
-                  },
-                  {
-                    id: "events",
-                    name: "Events & Festivals",
-                    icon: "🎉",
-                    description: "Cultural celebrations",
-                    image: Drums
-                  },
-                ].map((category) => (
-                  <div
-                    key={`second-${category.id}`}
-                    className="flex-shrink-0 w-56 sm:w-64 md:w-72 p-6 sm:p-8 mx-2 relative overflow-hidden bg-orange-800/60 backdrop-blur-md rounded-xl sm:rounded-2xl border-2 border-transparent hover:border-yellow-400 transition-all duration-300 hover:scale-[0.98] cursor-pointer group hover:bg-orange-800/80"
-                  >
-                    <div className="absolute inset-0 z-0">
-                      <Image
-                        src={category.image}
-                        alt={category.name}
-                        fill
-                        className="object-cover opacity-20 group-hover:opacity-30 transition-opacity duration-300"
-                      />
-                      <div className="absolute inset-0 bg-gradient-to-b from-orange-800/80 to-orange-900/90" />
-                    </div>
-                    <div className="text-center relative z-10">
-                      <div className="text-4xl mb-4 transform group-hover:scale-110 transition-transform duration-300">{category.icon}</div>
-                      <h4 className="text-white font-semibold mb-2 text-base group-hover:text-yellow-300 transition-colors duration-300">{category.name}</h4>
-                      <p className="text-orange-200 text-sm">{category.description}</p>
+                    <div className="relative z-10 flex min-h-[7.5rem] flex-col items-center justify-center text-center sm:min-h-[8rem]">
+                      <span className="mb-3 text-3xl drop-shadow transition-transform duration-300 group-hover:scale-110 sm:mb-3.5 sm:text-4xl">
+                        {category.icon}
+                      </span>
+                      <h4 className="mb-1.5 text-sm font-semibold leading-snug text-white drop-shadow-[0_1px_2px_rgba(0,0,0,0.45)] sm:text-base">
+                        {category.name}
+                      </h4>
+                      <p className="max-w-[13rem] text-xs leading-snug text-white/90 drop-shadow-[0_1px_1px_rgba(0,0,0,0.35)] sm:text-sm">
+                        {category.description}
+                      </p>
                     </div>
                   </div>
                 ))}
@@ -571,39 +432,48 @@ export default function HomePage() {
       <section className="py-12 sm:py-16 bg-gradient-to-br from-amber-50 via-orange-50 to-red-50 relative">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="text-center mb-8 sm:mb-12">
-            <Badge
+            {/* <Badge
               variant="secondary"
               className="mb-3 sm:mb-4 px-3 sm:px-4 py-1.5 sm:py-2 bg-gradient-to-r from-yellow-500/20 to-orange-500/20 text-orange-700 border border-orange-200/50 backdrop-blur-sm text-sm sm:text-base"
             >
               ✨ Everything You Need
-            </Badge>
+            </Badge> */}
             <h2 className="text-3xl sm:text-4xl md:text-5xl lg:text-6xl font-bold text-gray-900 mb-4 sm:mb-6 px-2">
               Explore <span className="text-transparent bg-clip-text bg-gradient-to-r from-orange-500 to-red-500">Africa</span> Like Never Before
             </h2>
-            <p className="text-base sm:text-lg md:text-xl text-gray-600 max-w-2xl mx-auto px-4">
+            <p className="mx-auto max-w-2xl px-4 text-base leading-relaxed text-gray-700 sm:text-lg md:text-xl">
               Discover, connect, and experience the rich culture and vibrant lifestyle across the continent with our
               comprehensive platform.
             </p>
           </div>
 
-          <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-6">
+          <div className="grid gap-6 sm:grid-cols-2 sm:gap-7 lg:grid-cols-3 lg:gap-8">
             {features.map((feature, index) => (
               <Card
                 key={index}
-                className={`${feature.color} backdrop-blur-sm border-2 border-transparent rounded-3xl shadow-sm hover:shadow-lg hover:border-amber-400/50 transition-all duration-500 group animate-float ${feature.hoverColor}`}
+                className={`${feature.color} group flex h-full flex-col rounded-3xl border border-gray-200/90 shadow-sm backdrop-blur-sm transition-all duration-300 hover:-translate-y-0.5 hover:border-orange-200/80 hover:shadow-md ${feature.hoverColor} animate-float`}
                 style={{ animationDelay: `${index * 0.2}s` }}
               >
-                <CardContent className="p-8">
-                  <div className={`w-16 h-16 bg-orange-100 rounded-2xl flex items-center justify-center mx-auto mb-6 transition-transform duration-300 group-hover:scale-110`}>
-                    <feature.icon className={`w-8 h-8 ${feature.iconColor} transition-colors duration-300`} />
+                <CardContent className="flex flex-1 flex-col p-6 text-left sm:p-8">
+                  <div className="mb-5 flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-orange-100 transition-transform duration-300 group-hover:scale-105 sm:h-14 sm:w-14">
+                    <feature.icon className={`h-6 w-6 sm:h-7 sm:w-7 ${feature.iconColor}`} />
                   </div>
-                  <h3 className="text-2xl font-bold mb-3 text-gray-900 text-center group-hover:text-orange-500 transition-colors duration-300">{feature.title}</h3>
-                  <p className="text-gray-600 text-center mb-6 leading-relaxed text-base">{feature.description}</p>
-                  <ul className="space-y-3">
+                  <h3 className="text-xl font-semibold leading-snug tracking-tight text-gray-900 sm:text-[1.35rem]">
+                    {feature.title}
+                  </h3>
+                  <p className="mt-3 text-base leading-relaxed text-gray-700 sm:text-[1.05rem]">{feature.description}</p>
+                  <div className="mt-6 grow sm:mt-7" aria-hidden="true" />
+                  <ul
+                    className="space-y-2.5 border-t border-gray-200/80 pt-5 sm:space-y-3 sm:pt-6"
+                    aria-label={`${feature.title} highlights`}
+                  >
                     {feature.features.map((item, i) => (
-                      <li key={i} className="flex items-center text-base text-gray-500 group-hover:text-orange-600 transition-colors duration-300">
-                        <div className="w-1.5 h-1.5 bg-orange-500 rounded-full mr-3"></div>
-                        {item}
+                      <li key={i} className="flex gap-3 text-sm font-medium leading-snug text-gray-800 sm:text-[0.95rem]">
+                        <span
+                          className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-gradient-to-br from-orange-500 to-red-500"
+                          aria-hidden
+                        />
+                        <span>{item}</span>
                       </li>
                     ))}
                   </ul>
@@ -614,94 +484,194 @@ export default function HomePage() {
         </div>
       </section>
 
+      {/* Map & nearby */}
+      <section className="border-t border-orange-100/80 bg-gradient-to-br from-amber-50 via-orange-50 to-red-50 py-12 sm:py-16">
+        <div className="mx-auto max-w-[90rem] px-4 sm:px-6 lg:px-8">
+          <div className="mb-8 text-center sm:mb-10">
+            <h2 className="mb-3 text-3xl font-bold text-gray-900 sm:text-4xl md:text-5xl">
+              See places on the{" "}
+              <span className="text-transparent bg-clip-text bg-gradient-to-r from-orange-500 to-red-500">map</span>
+            </h2>
+            <p className="mx-auto max-w-2xl text-base text-gray-600 sm:text-lg">
+              {searchCenter
+                ? `Showing listings within ${radiusKm} km of your area. Tap a pin for a preview and open the full place page.`
+                : "Set your area above to filter by distance, or browse all pins across the continent."}
+            </p>
+          </div>
+          <div className="mx-auto mb-8 max-w-5xl sm:mb-10">
+            <LandingSearch
+              places={placesWithinPreferences}
+              locations={locationsForLandingSearch}
+              categories={categoriesForLandingSearch}
+              isLoading={isLoading}
+            />
+          </div>
+          {!isLoading && places.length === 0 ? (
+            <p className="rounded-2xl border border-dashed border-orange-200 bg-white/80 py-12 text-center text-gray-600">
+              No places to show on the map yet.
+            </p>
+          ) : (
+            <div className="grid gap-5 lg:grid-cols-[minmax(0,2.2fr)_minmax(340px,0.95fr)] lg:items-stretch">
+              <div className="overflow-hidden rounded-[28px] border border-white/70 bg-white/80 p-2 shadow-[0_20px_60px_rgba(249,115,22,0.12)] backdrop-blur-sm">
+                <div className="overflow-hidden rounded-[22px] border border-orange-100/80 bg-white">
+                  <PlacesGoogleMap
+                    places={placesForMap}
+                    mapCenter={searchCenter}
+                    zoom={searchCenter ? 10 : 4}
+                    minHeight={460}
+                  />
+                </div>
+              </div>
+
+              {searchCenter ? (
+                <div className="rounded-[28px] border border-white/70 bg-white/85 p-4 shadow-[0_20px_60px_rgba(249,115,22,0.12)] backdrop-blur-sm sm:p-5">
+                  <div className="mb-4 flex items-center justify-between gap-3 border-b border-orange-100 pb-3">
+                    <div>
+                      <h3 className="text-lg font-semibold text-gray-900">Nearby on Corners</h3>
+                      <p className="text-sm text-gray-500">Top picks within your selected area</p>
+                    </div>
+                    <span className="rounded-full bg-gradient-to-r from-amber-100 to-orange-100 px-3 py-1 text-xs font-semibold text-orange-700">
+                      {Math.min(placesForMap.length, 8)} spots
+                    </span>
+                  </div>
+
+                  {placesForMap.length > 0 ? (
+                    <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-1">
+                      {placesForMap.slice(0, 8).map((p) => (
+                        <Link
+                          key={p.id}
+                          href={`/place/${p.id}`}
+                          className="group flex items-center gap-3 overflow-hidden rounded-2xl border border-orange-100/80 bg-gradient-to-r from-white to-orange-50/60 p-2.5 shadow-sm transition-all hover:-translate-y-0.5 hover:border-orange-300 hover:shadow-md"
+                        >
+                          <div className="relative h-20 w-24 shrink-0 overflow-hidden rounded-xl bg-orange-50">
+                            <Image
+                              src={p.imageUrl || "/placeholder.svg"}
+                              alt=""
+                              fill
+                              className="object-cover transition-transform duration-500 group-hover:scale-105"
+                              sizes="96px"
+                            />
+                          </div>
+                          <div className="min-w-0 flex-1">
+                            <p className="line-clamp-2 text-sm font-semibold leading-snug text-gray-900">{p.name}</p>
+                            <p className="mt-1 text-xs text-gray-500">Open preview from the map or view full details</p>
+                          </div>
+                        </Link>
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="rounded-2xl border border-dashed border-orange-200 bg-orange-50/40 px-4 py-8 text-center">
+                      <p className="text-sm font-semibold text-gray-800">No listings found</p>
+                      <p className="mt-1 text-sm text-gray-500">Try a larger radius or choose a different area.</p>
+                    </div>
+                  )}
+                </div>
+              ) : null}
+            </div>
+          )}
+        </div>
+      </section>
+
       {/* Popular Destinations */}
       <section className="py-12 sm:py-16 bg-gradient-to-br from-amber-50 via-orange-50 to-red-50">
         <div className="mb-8 sm:mb-12 px-4 sm:px-6 lg:px-8 max-w-7xl mx-auto">
           <div className="text-center">
-            <Badge
+            {/* <Badge
               variant="secondary"
               className="mb-3 px-3 py-1.5 bg-gradient-to-r from-yellow-500/20 to-orange-500/20 text-orange-700 border border-orange-200/50 backdrop-blur-sm text-sm"
             >
               🌟 Popular Destinations
-            </Badge>
+            </Badge> */}
             <h2 className="text-3xl sm:text-4xl md:text-5xl font-bold text-gray-900 mb-3 sm:mb-4 px-2">
               Discover <span className="text-transparent bg-clip-text bg-gradient-to-r from-orange-500 to-red-500">Amazing</span> Places
             </h2>
             <p className="text-base sm:text-lg text-gray-600 max-w-2xl mx-auto leading-relaxed px-4">
-              Explore the most loved spots across Africa, curated by our community of explorers
+              {searchCenter
+                ? `Top areas among listings within ${radiusKm} km of your location - explore what is close to you.`
+                : "Explore the most loved spots across Africa, curated by our community of explorers"}
             </p>
           </div>
         </div>
 
         {/* Full-width Destinations Slider */}
-        <div className="relative overflow-hidden w-full">
-          {/* Gradient Overlays - more subtle */}
-          <div className="absolute left-0 top-0 bottom-0 w-12 sm:w-16 md:w-24 bg-gradient-to-r from-amber-50 to-transparent z-10 opacity-30" />
-          <div className="absolute right-0 top-0 bottom-0 w-12 sm:w-16 md:w-24 bg-gradient-to-l from-amber-50 to-transparent z-10 opacity-30" />
-          
-          <div className="flex gap-4 sm:gap-6 animate-scroll-slow hover:pause px-4">
+        <div className="relative w-full overflow-hidden py-2">
+          {shouldAutoScrollDestinations ? (
+            <>
+              <div className="pointer-events-none absolute inset-y-0 left-0 z-10 w-5 bg-gradient-to-r from-amber-50/55 to-transparent sm:w-7 md:w-10" />
+              <div className="pointer-events-none absolute inset-y-0 right-0 z-10 w-5 bg-gradient-to-l from-amber-50/55 to-transparent sm:w-7 md:w-10" />
+            </>
+          ) : null}
+
+          <div
+            className={`flex gap-5 px-4 sm:gap-7 sm:px-6 md:px-8 ${
+              shouldAutoScrollDestinations
+                ? "animate-scroll-destinations hover:pause"
+                : "flex-wrap justify-center"
+            }`}
+          >
             {isLoading ? (
-              // Loading skeleton
               Array.from({ length: 4 }).map((_, index) => (
                 <Card
                   key={index}
-                  className="flex-shrink-0 w-[280px] sm:w-[320px] md:w-[360px] lg:w-[400px] border-2 border-transparent shadow-md"
+                  className="h-[300px] w-[260px] flex-shrink-0 overflow-hidden rounded-2xl border border-white/60 shadow-sm sm:h-[340px] sm:w-[300px] md:h-[380px] md:w-[340px]"
                 >
                   <CardContent className="p-0">
-                    <div className="relative overflow-hidden">
-                      <div className="w-full h-[280px] sm:h-[320px] md:h-[360px] lg:h-[400px] bg-gray-200 animate-pulse" />
-                    </div>
+                    <div className="h-full animate-pulse bg-gray-200" />
                   </CardContent>
                 </Card>
               ))
             ) : popularDestinations.length === 0 ? (
-              <div className="w-full text-center py-12 text-gray-500 px-4">
+              <div className="w-full px-4 py-12 text-center text-gray-500">
                 <p>No destinations available yet. Check back soon!</p>
               </div>
             ) : (
-              // Duplicate destinations for continuous scroll effect
-              [...popularDestinations, ...popularDestinations].map((destination, index) => (
-                <Card
-                  key={index}
-                  className="flex-shrink-0 w-[280px] sm:w-[320px] md:w-[360px] lg:w-[400px] border-2 border-transparent shadow-md hover:shadow-lg hover:border-amber-400/50 transition-all duration-500 cursor-pointer group overflow-hidden transform hover:-translate-y-1"
+              (shouldAutoScrollDestinations
+                ? [...popularDestinations, ...popularDestinations]
+                : popularDestinations
+              ).map((destination, index) => (
+                <Link
+                  key={`${destination.id}-${index}`}
+                  href={destination.href}
+                  className="group flex-shrink-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-orange-400 focus-visible:ring-offset-2 focus-visible:ring-offset-amber-50"
                 >
-                  <CardContent className="p-0">
-                    <div className="relative overflow-hidden">
-                      <Image
-                        src={destination.image}
-                        alt={destination.name}
-                        width={400}
-                        height={300}
-                        className="w-full h-[280px] sm:h-[320px] md:h-[360px] lg:h-[400px] object-cover group-hover:scale-110 transition-transform duration-700"
-                      />
-                      <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/40 to-transparent opacity-80 group-hover:opacity-90 transition-opacity duration-300" />
-                      <div className="absolute top-4 right-4">
-                        <Badge className="bg-white/90 text-gray-900 border-0 shadow-sm group-hover:bg-yellow-400 transition-colors duration-300 text-sm">
-                          <Star className="w-3 h-3 mr-1 text-yellow-500 fill-current" />
-                          {destination.rating}
-                        </Badge>
-                      </div>
-                      <div className="absolute bottom-0 left-0 right-0 p-4 sm:p-6 transform translate-y-2 group-hover:translate-y-0 transition-transform duration-300">
-                        <h3 className="text-xl sm:text-2xl font-bold text-white mb-1 sm:mb-2 group-hover:text-yellow-300 transition-colors duration-300">
-                          {destination.name}
-                        </h3>
-                        <p className="text-sm sm:text-base text-orange-200 font-medium mb-1 sm:mb-2">{destination.country}</p>
-                        <p className="text-xs sm:text-sm text-white/90 mb-2 sm:mb-3">{destination.spots}</p>
-                        <div className="flex flex-col sm:flex-row items-start sm:items-center gap-2 sm:gap-3 sm:space-x-3">
-                          <Badge className="bg-white/20 backdrop-blur-sm text-white border-0 px-2 sm:px-3 py-1 sm:py-1.5 text-xs sm:text-sm">
-                            {destination.highlight}
+                  <Card className="h-full w-[260px] overflow-hidden rounded-2xl border border-white/70 shadow-sm transition-all duration-300 hover:-translate-y-1 hover:border-amber-300/60 hover:shadow-md sm:w-[300px] md:w-[340px]">
+                    <CardContent className="flex h-full flex-col p-0">
+                      <div className="relative h-[300px] sm:h-[340px] md:h-[380px]">
+                        <Image
+                          src={destination.image}
+                          alt={destination.name}
+                          width={680}
+                          height={760}
+                          className="absolute inset-0 h-full w-full object-cover transition-transform duration-700 group-hover:scale-105"
+                        />
+                        <div className="absolute inset-0 bg-gradient-to-t from-black/95 via-black/45 to-black/10" />
+                        <div className="absolute right-3 top-3 sm:right-4 sm:top-4">
+                          <Badge className="border-0 bg-black/55 px-2.5 py-0.5 text-xs text-white shadow-md backdrop-blur-sm sm:text-sm">
+                            <Star className="mr-1 h-3 w-3 fill-amber-400 text-amber-400" />
+                            {destination.rating}
                           </Badge>
-                          <Link href={`/discover?location=${destination.id}`} className="w-full sm:w-auto">
-                            <Button size="sm" variant="secondary" className="w-full sm:w-auto bg-white/20 backdrop-blur-sm hover:bg-white/30 text-white px-3 sm:px-4 text-xs sm:text-sm">
+                        </div>
+                        <div className="absolute inset-x-0 bottom-0 flex flex-col p-4 sm:p-5">
+                          <h3 className="text-lg font-bold leading-tight text-white drop-shadow-sm sm:text-xl">
+                            {destination.country
+                              ? `${destination.name}, ${destination.country}`
+                              : destination.name}
+                          </h3>
+                          <p className="mt-1 text-xs font-medium text-orange-100/95 sm:text-sm">{destination.spots}</p>
+                          <div className="mt-4 flex min-h-[2.75rem] items-center justify-between gap-3 border-t border-white/15 pt-3">
+                            <p className="line-clamp-2 min-w-0 flex-1 text-left text-xs leading-snug text-white/90 sm:text-sm">
+                              {destination.highlight}
+                            </p>
+                            <span className="inline-flex shrink-0 items-center gap-1 rounded-full bg-white/95 px-3 py-1.5 text-xs font-semibold text-orange-800 shadow-sm transition-colors group-hover:bg-amber-300 group-hover:text-orange-950 sm:px-4 sm:text-sm">
                               Explore
-                              <ArrowRight className="w-3 h-3 sm:w-4 sm:h-4 ml-1.5" />
-                            </Button>
-                          </Link>
+                              <ArrowRight className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
+                            </span>
+                          </div>
                         </div>
                       </div>
-                    </div>
-                  </CardContent>
-                </Card>
+                    </CardContent>
+                  </Card>
+                </Link>
               ))
             )}
           </div>
@@ -795,12 +765,12 @@ export default function HomePage() {
         </div>
 
         <div className="max-w-4xl mx-auto text-center px-4 sm:px-6 lg:px-8 relative">
-          <Badge
+          {/* <Badge
             variant="secondary"
             className="mb-3 px-3 py-1.5 bg-gradient-to-r from-yellow-500/20 to-orange-500/20 text-orange-700 border border-orange-200/50 backdrop-blur-sm text-sm"
           >
             🚀 Get Started Today
-          </Badge>
+          </Badge> */}
           <h2 className="text-4xl md:text-5xl font-bold text-gray-900 mb-4">
             Start Your <span className="text-transparent bg-clip-text bg-gradient-to-r from-orange-500 to-red-500">African</span> Adventure
           </h2>
@@ -830,112 +800,7 @@ export default function HomePage() {
         </div>
       </section>
 
-      {/* Footer */}
-      <footer className="py-12 bg-gradient-to-br from-orange-900 via-red-900 to-yellow-900 relative overflow-hidden">
-        <div className="absolute inset-0 bg-[url('data:image/svg+xml,%3Csvg width=\'80\' height=\'80\' viewBox=\'0 0 80 80\' xmlns=\'http://www.w3.org/2000/svg\'%3E%3Cg fill=\'none\' fill-rule=\'evenodd\'%3E%3Cg fill=\'%23ffffff\' fill-opacity=\'0.1\'%3E%3Cpath d=\'M0 0h40v40H0V0zm40 40h40v40H40V40zM0 40h20v20H0V40zm20 0h20v20H20V40zm40 0h20v20H60V40zm-20 0h20v20H40V40z\'/%3E%3C/g%3E%3C/g%3E%3C/svg%3E')] opacity-10" />
-        
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 relative">
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-12">
-            {/* Brand Section */}
-            <div className="space-y-6">
-              <div className="flex items-center space-x-3">
-                <div className="w-10 h-10 bg-gradient-to-br from-yellow-400 via-orange-400 to-red-400 rounded-xl flex items-center justify-center shadow-lg">
-                  <Image src={Africa} alt="Africa" width={32} height={32} className="inline-block" />
-                </div>
-                <div>
-                  <h3 className="text-2xl font-bold text-white">Corners</h3>
-                  <p className="text-orange-200 text-sm">African Lifestyle</p>
-                </div>
-              </div>
-              <p className="text-orange-200/80">
-                Discover authentic African experiences, from local cuisine to cultural celebrations.
-              </p>
-              <div className="flex space-x-4">
-                <Button size="icon" variant="ghost" className="rounded-full hover:bg-white/10 text-orange-200 hover:text-white">
-                  <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 24 24">
-                    <path d="M24 12.073c0-6.627-5.373-12-12-12s-12 5.373-12 12c0 5.99 4.388 10.954 10.125 11.854v-8.385H7.078v-3.47h3.047V9.43c0-3.007 1.792-4.669 4.533-4.669 1.312 0 2.686.235 2.686.235v2.953H15.83c-1.491 0-1.956.925-1.956 1.874v2.25h3.328l-.532 3.47h-2.796v8.385C19.612 23.027 24 18.062 24 12.073z" />
-                  </svg>
-                </Button>
-                <Button size="icon" variant="ghost" className="rounded-full hover:bg-white/10 text-orange-200 hover:text-white">
-                  <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 24 24">
-                    <path d="M23.953 4.57a10 10 0 01-2.825.775 4.958 4.958 0 002.163-2.723c-.951.555-2.005.959-3.127 1.184a4.92 4.92 0 00-8.384 4.482C7.69 8.095 4.067 6.13 1.64 3.162a4.822 4.822 0 00-.666 2.475c0 1.71.87 3.213 2.188 4.096a4.904 4.904 0 01-2.228-.616v.06a4.923 4.923 0 003.946 4.827 4.996 4.996 0 01-2.212.085 4.936 4.936 0 004.604 3.417 9.867 9.867 0 01-6.102 2.105c-.39 0-.779-.023-1.17-.067a13.995 13.995 0 007.557 2.209c9.053 0 13.998-7.496 13.998-13.985 0-.21 0-.42-.015-.63A9.935 9.935 0 0024 4.59z" />
-                  </svg>
-                </Button>
-                <Button size="icon" variant="ghost" className="rounded-full hover:bg-white/10 text-orange-200 hover:text-white">
-                  <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 24 24">
-                    <path d="M12 0C8.74 0 8.333.015 7.053.072 5.775.132 4.905.333 4.14.63c-.789.306-1.459.717-2.126 1.384S.935 3.35.63 4.14C.333 4.905.131 5.775.072 7.053.012 8.333 0 8.74 0 12s.015 3.667.072 4.947c.06 1.277.261 2.148.558 2.913.306.788.717 1.459 1.384 2.126.667.666 1.336 1.079 2.126 1.384.766.296 1.636.499 2.913.558C8.333 23.988 8.74 24 12 24s3.667-.015 4.947-.072c1.277-.06 2.148-.262 2.913-.558.788-.306 1.459-.718 2.126-1.384.666-.667 1.079-1.335 1.384-2.126.296-.765.499-1.636.558-2.913.06-1.28.072-1.687.072-4.947s-.015-3.667-.072-4.947c-.06-1.277-.262-2.149-.558-2.913-.306-.789-.718-1.459-1.384-2.126C21.319 1.347 20.651.935 19.86.63c-.765-.297-1.636-.499-2.913-.558C15.667.012 15.26 0 12 0zm0 2.16c3.203 0 3.585.016 4.85.071 1.17.055 1.805.249 2.227.415.562.217.96.477 1.382.896.419.42.679.819.896 1.381.164.422.36 1.057.413 2.227.057 1.266.07 1.646.07 4.85s-.015 3.585-.074 4.85c-.061 1.17-.256 1.805-.421 2.227-.224.562-.479.96-.899 1.382-.419.419-.824.679-1.38.896-.42.164-1.065.36-2.235.413-1.274.057-1.649.07-4.859.07-3.211 0-3.586-.015-4.859-.074-1.171-.061-1.816-.256-2.236-.421-.569-.224-.96-.479-1.379-.899-.421-.419-.69-.824-.9-1.38-.165-.42-.359-1.065-.42-2.235-.045-1.26-.061-1.649-.061-4.844 0-3.196.016-3.586.061-4.861.061-1.17.255-1.814.42-2.234.21-.57.479-.96.9-1.381.419-.419.81-.689 1.379-.898.42-.166 1.051-.361 2.221-.421 1.275-.045 1.65-.06 4.859-.06l.045.03zm0 3.678c-3.405 0-6.162 2.76-6.162 6.162 0 3.405 2.76 6.162 6.162 6.162 3.405 0 6.162-2.76 6.162-6.162 0-3.405-2.76-6.162-6.162-6.162zM12 16c-2.21 0-4-1.79-4-4s1.79-4 4-4 4 1.79 4 4-1.79 4-4 4zm7.846-10.405c0 .795-.646 1.44-1.44 1.44-.795 0-1.44-.646-1.44-1.44 0-.794.646-1.439 1.44-1.439.793-.001 1.44.645 1.44 1.439z" />
-                  </svg>
-                </Button>
-              </div>
-            </div>
-
-            {/* Quick Links */}
-            <div>
-              <h4 className="text-lg font-semibold text-white mb-6">Quick Links</h4>
-              <ul className="space-y-4">
-                {['Discover', 'About Us', 'For Business', 'Events'].map((item) => (
-                  <li key={item}>
-                    <Link href={`/${item.toLowerCase().replace(' ', '-')}`} className="text-orange-200 hover:text-white transition-colors duration-200">
-                      {item}
-                    </Link>
-                  </li>
-                ))}
-              </ul>
-            </div>
-
-            {/* Categories */}
-            <div>
-              <h4 className="text-lg font-semibold text-white mb-6">Categories</h4>
-              <ul className="space-y-4">
-                {['Restaurants', 'Hotels & Lodges', 'Cultural Sites', 'Nightlife', 'Shopping'].map((item) => (
-                  <li key={item}>
-                    <Link href={`/category/${item.toLowerCase().replace(' ', '-')}`} className="text-orange-200 hover:text-white transition-colors duration-200">
-                      {item}
-                    </Link>
-                  </li>
-                ))}
-              </ul>
-            </div>
-
-            {/* Newsletter */}
-            <div>
-              <h4 className="text-lg font-semibold text-white mb-6">Stay Updated</h4>
-              <p className="text-orange-200/80 mb-4">
-                Subscribe to our newsletter for the latest African experiences and travel tips.
-              </p>
-              <div className="flex space-x-2">
-                <Input
-                  type="email"
-                  placeholder="Enter your email"
-                  className="bg-white/10 border-orange-400/20 text-white placeholder:text-orange-200/50 focus:border-orange-300"
-                />
-                <Button className="bg-gradient-to-r from-yellow-500 to-orange-500 hover:from-yellow-600 hover:to-orange-600 text-white">
-                  Subscribe
-                </Button>
-              </div>
-            </div>
-          </div>
-
-          <div className="mt-12 pt-8 border-t border-orange-400/20">
-            <div className="flex flex-col md:flex-row justify-between items-center">
-              <p className="text-orange-200/80 text-sm mb-4 md:mb-0">
-                © 2025 Corners. Made with ❤️ for Africa.
-              </p>
-              <div className="flex space-x-6">
-                <Link href="/privacy" className="text-orange-200 hover:text-white text-sm transition-colors duration-200">
-                  Privacy Policy
-                </Link>
-                <Link href="/terms" className="text-orange-200 hover:text-white text-sm transition-colors duration-200">
-                  Terms of Service
-                </Link>
-                <Link href="/contact" className="text-orange-200 hover:text-white text-sm transition-colors duration-200">
-                  Contact Us
-                </Link>
-              </div>
-            </div>
-          </div>
-        </div>
-      </footer>
+      <AppComingSoonModal open={showAppComingSoon} onOpenChange={setShowAppComingSoon} />
     </main>
   )
 }

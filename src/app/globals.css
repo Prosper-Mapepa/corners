@@ -129,6 +129,16 @@
   .animate-scroll-slow {
     animation: scroll 40s linear infinite;
   }
+
+  /** Hero category strip — faster than legacy 40s marquee */
+  .animate-scroll-hero-categories {
+    animation: scroll 16s linear infinite;
+  }
+
+  /** Faster horizontal marquee (e.g. Popular Destinations) */
+  .animate-scroll-destinations {
+    animation: scroll 18s linear infinite;
+  }
   
   .hover\:pause:hover {
     animation-play-state: paused;
@@ -200,6 +210,16 @@
   to { width: 100% }
 }
 
+/** Reveal by max-width so intrinsic headline width isn’t clipped before “100%” fills the text */
+@keyframes typing-hero-reveal {
+  from {
+    max-width: 0;
+  }
+  to {
+    max-width: min(100%, 96rem);
+  }
+}
+
 @keyframes blink {
   50% { border-color: transparent }
 }
@@ -235,6 +255,36 @@
   font-weight: 800;
 }
 
+/** Hero H1: left→right via max-width + max-content (full title, all breakpoints) */
+.animate-typing-hero {
+  display: inline-flex;
+  flex-wrap: nowrap;
+  align-items: center;
+  justify-content: flex-start;
+  box-sizing: border-box;
+  overflow: hidden;
+  white-space: nowrap;
+  width: max-content;
+  max-width: 0;
+  border-right: 3px solid rgba(255, 255, 255, 0.9);
+  animation:
+    typing-hero-reveal 5.25s steps(62, end) forwards,
+    blink 1s step-end infinite 0s,
+    hideCursor 1ms linear forwards 5.25s;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .animate-typing-hero {
+    width: auto !important;
+    max-width: none !important;
+    flex-wrap: wrap;
+    white-space: normal;
+    overflow: visible;
+    animation: none !important;
+    border-right: none !important;
+  }
+}
+
 @keyframes float {
   0% {
     transform: translateY(0px);
@@ -249,4 +299,73 @@
 
 .animate-float {
   animation: float 3s ease-in-out infinite;
+}
+
+/*
+ * Google Places Autocomplete — Corners warm theme (panel is rendered on body by Maps).
+ * Matches hero / toolbar browns, amber accents, and compact row height.
+ */
+.pac-container {
+  z-index: 30000 !important;
+  margin-top: 4px !important;
+  background: linear-gradient(
+    165deg,
+    oklch(0.24 0.045 55) 0%,
+    oklch(0.2 0.05 48) 45%,
+    oklch(0.18 0.055 42) 100%
+  ) !important;
+  border: 1px solid rgba(251, 191, 36, 0.38) !important;
+  border-radius: 14px !important;
+  box-shadow:
+    0 18px 50px rgba(0, 0, 0, 0.42),
+    inset 0 1px 0 rgba(255, 255, 255, 0.06) !important;
+  font-family: var(--font-geist-sans), ui-sans-serif, system-ui, sans-serif !important;
+  padding: 4px !important;
+  overflow: hidden !important;
+}
+
+.pac-item {
+  border-top: 1px solid rgba(255, 255, 255, 0.07) !important;
+  color: rgba(254, 243, 199, 0.9) !important;
+  padding: 8px 10px !important;
+  cursor: pointer !important;
+  line-height: 1.35 !important;
+  font-size: 13px !important;
+}
+
+.pac-item:first-child {
+  border-top: none !important;
+}
+
+.pac-item:hover,
+.pac-item-selected,
+.pac-item-selected:hover {
+  background: rgba(234, 88, 12, 0.32) !important;
+}
+
+.pac-item-query {
+  color: oklch(0.98 0.02 95) !important;
+  font-size: 13px !important;
+}
+
+.pac-matched {
+  font-weight: 700 !important;
+  color: oklch(0.93 0.12 95) !important;
+}
+
+span.pac-secondary-text,
+.pac-secondary-text {
+  color: rgba(253, 230, 138, 0.62) !important;
+  font-size: 11px !important;
+}
+
+.pac-icon {
+  margin-top: 1px !important;
+  margin-right: 8px !important;
+  filter: sepia(0.4) saturate(1.65) hue-rotate(348deg) brightness(1.08);
+}
+
+.pac-logo:after {
+  opacity: 0.5 !important;
+  filter: brightness(1.2) !important;
 }
